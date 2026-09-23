@@ -25,6 +25,7 @@ public sealed record CameraResponse(
     string? RoiJson,
     string? Resolution,
     int? Fps,
-    string? Bitrate);
+    string? Bitrate,
+    string? Retention);
 
 public sealed record ProbeResult(bool Ok, string Message, string? Resolution, int? Fps);

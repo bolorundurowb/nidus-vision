@@ -26,6 +26,8 @@ public sealed class Camera
     public RtspTransport Transport { get; set; } = RtspTransport.Tcp;
     public CameraStatus Status { get; set; } = CameraStatus.Offline;
     public string? RoiJson { get; set; }
+    public string? LastResolution { get; set; }
+    public int? LastFps { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 

@@ -14,6 +14,7 @@ namespace NidusVision.Web.Ingest;
 public sealed class CameraIngestHostedService(
     IServiceScopeFactory scopes,
     FfmpegSegmentProcess ffmpeg,
+    RtspProbe probe,
     ReconnectBackoff backoff,
     CameraStatusTracker statuses,
     ILogger<CameraIngestHostedService> logger) : BackgroundService
@@ -58,6 +59,7 @@ public sealed class CameraIngestHostedService(
                 }
 
                 var url = cameras.ResolveRtspUrl(camera);
+                await RecordStreamMetadataAsync(camera, url, stoppingToken);
 
                 var dir = Path.Combine(Path.GetFullPath(storage.RecordingsDirectory), camera.Id.ToString("N"), DateTime.UtcNow.ToString("yyyy"), DateTime.UtcNow.ToString("MM"), DateTime.UtcNow.ToString("dd"));
                 using var process = ffmpeg.Start(
@@ -122,6 +124,25 @@ public sealed class CameraIngestHostedService(
 
             attempt++;
             await Task.Delay(backoff.DelayForAttempt(attempt), stoppingToken);
+        }
+    }
+
+    /// <summary>
+    /// Recording runs FFmpeg at warning level, which never prints stream details, so the
+    /// resolution and frame rate shown per camera come from a short probe before each connect.
+    /// Values are kept when a probe cannot read them so the UI does not lose what it had.
+    /// </summary>
+    private async Task RecordStreamMetadataAsync(Camera camera, string url, CancellationToken stoppingToken)
+    {
+        try
+        {
+            var result = await probe.ProbeAsync(url, camera.Transport.ToString(), stoppingToken);
+            camera.LastResolution = result.Resolution ?? camera.LastResolution;
+            camera.LastFps = result.Fps ?? camera.LastFps;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogDebug(ex, "Could not read stream metadata for camera {CameraId}", camera.Id);
         }
     }
 }
