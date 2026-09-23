@@ -8,8 +8,8 @@ public sealed class ReconnectBackoffTests
     public void Delay_grows_then_caps()
     {
         var backoff = new ReconnectBackoff(TimeProvider.System);
-        Assert.Equal(1, backoff.DelayForAttempt(0).TotalSeconds);
-        Assert.Equal(2, backoff.DelayForAttempt(1).TotalSeconds);
-        Assert.Equal(60, backoff.DelayForAttempt(10).TotalSeconds);
+        backoff.DelayForAttempt(0).TotalSeconds.Must().Be(1);
+        backoff.DelayForAttempt(1).TotalSeconds.Must().Be(2);
+        backoff.DelayForAttempt(10).TotalSeconds.Must().Be(60);
     }
 }

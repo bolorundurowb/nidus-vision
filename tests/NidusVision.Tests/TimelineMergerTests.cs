@@ -14,8 +14,8 @@ public sealed class TimelineMergerTests
             new(start.AddMinutes(8), start.AddMinutes(15), false),
         };
         var merged = TimelineMerger.Merge(intervals);
-        Assert.Single(merged);
-        Assert.Equal(start.AddMinutes(15), merged[0].End);
+        merged.Must().HaveCount(1);
+        merged[0].End.Must().Be(start.AddMinutes(15));
     }
 
     [Fact]
@@ -28,15 +28,15 @@ public sealed class TimelineMergerTests
             new(start.AddMinutes(5), start.AddMinutes(6), true),
         };
         var merged = TimelineMerger.Merge(intervals);
-        Assert.Equal(2, merged.Count);
+        merged.Must().HaveCount(2);
     }
 
     [Fact]
     public void ToPercent_clamps_to_window()
     {
         var start = DateTimeOffset.Parse("2026-09-23T14:00:00Z");
-        Assert.Equal(0, TimelineMerger.ToPercent(start.AddMinutes(-1), start, TimeSpan.FromHours(1)));
-        Assert.Equal(50, TimelineMerger.ToPercent(start.AddMinutes(30), start, TimeSpan.FromHours(1)));
-        Assert.Equal(100, TimelineMerger.ToPercent(start.AddHours(2), start, TimeSpan.FromHours(1)));
+        TimelineMerger.ToPercent(start.AddMinutes(-1), start, TimeSpan.FromHours(1)).Must().Be(0);
+        TimelineMerger.ToPercent(start.AddMinutes(30), start, TimeSpan.FromHours(1)).Must().Be(50);
+        TimelineMerger.ToPercent(start.AddHours(2), start, TimeSpan.FromHours(1)).Must().Be(100);
     }
 }

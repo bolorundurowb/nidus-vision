@@ -29,7 +29,8 @@ public sealed class TimestampQueryTests : IDisposable
             .OrderByDescending(s => s.StartUtc)
             .ToListAsync(CancellationToken.None);
 
-        Assert.Equal(now.AddMinutes(-10), Assert.Single(ordered).StartUtc);
+        ordered.Must().HaveCount(1);
+        ordered[0].StartUtc.Must().Be(now.AddMinutes(-10));
     }
 
     [Fact]
@@ -51,8 +52,8 @@ public sealed class TimestampQueryTests : IDisposable
             .OrderBy(e => e.StartUtc)
             .FirstAsync(CancellationToken.None);
 
-        Assert.Equal(TimeSpan.Zero, stored.StartUtc.Offset);
-        Assert.Equal(start.UtcDateTime, stored.StartUtc.UtcDateTime);
+        stored.StartUtc.Offset.Must().Be(TimeSpan.Zero);
+        stored.StartUtc.UtcDateTime.Must().Be(start.UtcDateTime);
     }
 
     private AppDbContext CreateContext()

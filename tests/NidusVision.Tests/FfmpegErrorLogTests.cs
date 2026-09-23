@@ -11,29 +11,29 @@ public sealed class FfmpegErrorLogTests
             [rtsp @ 000001] method DESCRIBE failed: 401 Unauthorized
             rtsp://cam/live0: Server returned 401 Unauthorized
             """;
-        Assert.Contains("username and password", FfmpegErrorLog.Describe(log, "fallback"));
+        FfmpegErrorLog.Describe(log, "fallback").Must().Contain("username and password");
     }
 
     [Fact]
     public void Describe_reports_unreachable_cameras()
     {
-        Assert.Equal(
-            "The camera could not be reached on the network.",
-            FfmpegErrorLog.Describe("[tcp @ 1] Connection refused", "fallback"));
+        FfmpegErrorLog.Describe("[tcp @ 1] Connection refused", "fallback")
+            .Must()
+            .Be("The camera could not be reached on the network.");
     }
 
     [Fact]
     public void Describe_redacts_credentials_from_unknown_errors()
     {
         var message = FfmpegErrorLog.Describe("Error opening rtsp://admin:s3cret@cam.local/live0 for reading", "fallback");
-        Assert.DoesNotContain("s3cret", message);
-        Assert.Contains("rtsp://***", message);
+        message.Must().NotContain("s3cret");
+        message.Must().Contain("rtsp://***");
     }
 
     [Fact]
     public void Describe_falls_back_when_log_is_empty()
     {
-        Assert.Equal("fallback", FfmpegErrorLog.Describe("   ", "fallback"));
+        FfmpegErrorLog.Describe("   ", "fallback").Must().Be("fallback");
     }
 
     [Fact]
@@ -46,7 +46,7 @@ public sealed class FfmpegErrorLogTests
         }
 
         var lines = log.Text.Split(Environment.NewLine);
-        Assert.Equal(40, lines.Length);
-        Assert.Equal("line 59", lines[^1]);
+        lines.Length.Must().Be(40);
+        lines[^1].Must().Be("line 59");
     }
 }

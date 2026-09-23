@@ -12,7 +12,7 @@ namespace NidusVision.Tests;
 public sealed class RecordingStorageTests
 {
     [Fact]
-    public void SegmentDuration_DefaultsToThirtyMinutes()
+    public void SegmentDuration_DefaultsToFifteenMinutes()
     {
         var options = new StorageOptions();
         var startInfo = new FfmpegSegmentProcess().CreateStartInfo(
@@ -21,12 +21,27 @@ public sealed class RecordingStorageTests
             CreateTempDirectory(),
             options.EffectiveSegmentDurationSeconds);
 
-        AssertArgumentValue(startInfo.ArgumentList, "-segment_time", "1800");
+        options.EffectiveSegmentDurationSeconds.Must().Be(900);
+        AssertArgumentValue(startInfo.ArgumentList, "-segment_time", "900");
         AssertArgumentValue(startInfo.ArgumentList, "-break_non_keyframes", "1");
+        startInfo.ArgumentList.Must().NotContain("10");
     }
 
     [Fact]
-    public void SegmentDuration_UnderThirtyMinutesIsNotChanged()
+    public void SegmentDuration_ConfiguredShorterIsNotChanged()
+    {
+        var options = new StorageOptions { SegmentDurationSeconds = 5 * 60 };
+        var startInfo = new FfmpegSegmentProcess().CreateStartInfo(
+            "rtsp://camera/stream",
+            "tcp",
+            CreateTempDirectory(),
+            options.EffectiveSegmentDurationSeconds);
+
+        AssertArgumentValue(startInfo.ArgumentList, "-segment_time", "300");
+    }
+
+    [Fact]
+    public void SegmentDuration_ConfiguredLongerWithinCapIsNotChanged()
     {
         var options = new StorageOptions { SegmentDurationSeconds = 17 * 60 };
         var startInfo = new FfmpegSegmentProcess().CreateStartInfo(
@@ -43,7 +58,7 @@ public sealed class RecordingStorageTests
     {
         var options = new StorageOptions { SegmentDurationSeconds = 60 * 60 };
 
-        Assert.Equal(1800, options.EffectiveSegmentDurationSeconds);
+        options.EffectiveSegmentDurationSeconds.Must().Be(1800);
     }
 
     [Fact]
@@ -70,7 +85,7 @@ public sealed class RecordingStorageTests
             CameraId = camera.Id,
             Path = recordingPath,
             StartUtc = start,
-            EndUtc = start.AddMinutes(30),
+            EndUtc = start.AddMinutes(15),
             ByteSize = 4,
         });
         await db.SaveChangesAsync();
@@ -90,14 +105,67 @@ public sealed class RecordingStorageTests
             CancellationToken.None);
 
         var detection = await db.DetectionEvents.SingleAsync();
-        Assert.NotNull(detection.ClipPath);
-        Assert.NotEqual(Path.GetFullPath(recordingPath), Path.GetFullPath(detection.ClipPath!));
-        Assert.StartsWith(
-            Path.GetFullPath(events),
-            Path.GetFullPath(detection.ClipPath!),
-            StringComparison.OrdinalIgnoreCase);
-        Assert.True(File.Exists(detection.ClipPath));
-        Assert.Equal([1, 2, 3, 4], await File.ReadAllBytesAsync(detection.ClipPath!));
+        detection.ClipPath.Must().NotBeNull();
+        Path.GetFullPath(detection.ClipPath!).Must().NotBe(Path.GetFullPath(recordingPath));
+        Path.GetFullPath(detection.ClipPath!).Must().StartWith(Path.GetFullPath(events), StringComparison.OrdinalIgnoreCase);
+        detection.ClipPath!.FileExists();
+        (await File.ReadAllBytesAsync(detection.ClipPath!)).Must().BeSequenceEqual([1, 2, 3, 4]);
+    }
+
+    [Fact]
+    public async Task RecordingLibrary_IndexesFilesMissedByTheIngestWatcher()
+    {
+        var root = CreateTempDirectory();
+        var recordings = Path.Combine(root, "recordings");
+        var dbOptions = new DbContextOptionsBuilder<AppDbContext>()
+            .UseSqlite($"Data Source={Path.Combine(root, "test.db")}")
+            .Options;
+        await using var db = new AppDbContext(dbOptions);
+        await db.Database.EnsureCreatedAsync();
+
+        var camera = new Camera { Name = "Front", MainRtspUrl = "rtsp://camera/stream" };
+        db.Cameras.Add(camera);
+        await db.SaveChangesAsync();
+
+        var directory = Path.Combine(recordings, camera.Id.ToString("N"), "2026", "09", "23");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "20260923T183000.mp4");
+        await File.WriteAllBytesAsync(path, [1, 2, 3, 4]);
+
+        var library = new EventLibraryService(db, Options.Create(new StorageOptions
+        {
+            RecordingsDirectory = recordings,
+        }));
+        var result = await library.SearchRecordingsAsync(null, null, 1, 12, CancellationToken.None);
+
+        result.Items.Must().HaveCount(1);
+        result.TotalCount.Must().Be(1);
+        var recording = result.Items[0];
+        recording.CameraId.Must().Be(camera.Id);
+        recording.StartUtc.Must().Be(new DateTimeOffset(2026, 9, 23, 18, 30, 0, TimeSpan.Zero));
+        recording.ByteSize.Must().Be(4);
+        recording.Available.Must().BeTrue();
+        (await library.ResolveRecordingPathAsync(recording.Id, CancellationToken.None)).Must().Be(path);
+    }
+
+    [Fact]
+    public async Task RecordingLibrary_ReturnsEmptyWhenStorageDoesNotExist()
+    {
+        var root = CreateTempDirectory();
+        var dbOptions = new DbContextOptionsBuilder<AppDbContext>()
+            .UseSqlite($"Data Source={Path.Combine(root, "test.db")}")
+            .Options;
+        await using var db = new AppDbContext(dbOptions);
+        await db.Database.EnsureCreatedAsync();
+
+        var library = new EventLibraryService(db, Options.Create(new StorageOptions
+        {
+            RecordingsDirectory = Path.Combine(root, "missing"),
+        }));
+
+        var result = await library.SearchRecordingsAsync(null, null, 1, 12, CancellationToken.None);
+        result.Items.Must().BeEmpty();
+        result.TotalCount.Must().Be(0);
     }
 
     private static void AssertArgumentValue(
@@ -106,8 +174,8 @@ public sealed class RecordingStorageTests
         string expected)
     {
         var index = arguments.IndexOf(argument);
-        Assert.True(index >= 0);
-        Assert.Equal(expected, arguments[index + 1]);
+        index.Must().BeGreaterThanOrEqualTo(0);
+        arguments[index + 1].Must().Be(expected);
     }
 
     private static string CreateTempDirectory()

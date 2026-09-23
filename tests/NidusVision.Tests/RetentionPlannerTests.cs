@@ -13,8 +13,8 @@ public sealed class RetentionPlannerTests
 
         var result = RetentionPlanner.SelectPurge([unmarked, human], now, TimeSpan.FromDays(7), TimeSpan.FromDays(30), null);
 
-        Assert.Contains(unmarked, result);
-        Assert.DoesNotContain(human, result);
+        result.Must().Contain(unmarked);
+        result.Must().NotContain(human);
     }
 
     [Fact]
@@ -31,7 +31,8 @@ public sealed class RetentionPlannerTests
             TimeSpan.FromDays(365),
             100);
 
-        Assert.Equal(old.Id, Assert.Single(result).Id);
+        result.Must().HaveCount(1);
+        result[0].Id.Must().Be(old.Id);
     }
 
     [Fact]
@@ -49,7 +50,7 @@ public sealed class RetentionPlannerTests
             TimeSpan.FromDays(30),
             100);
 
-        Assert.Equal([expired.Id, oldestRetained.Id], result.Select(segment => segment.Id));
+        result.Select(segment => segment.Id).Must().BeSequenceEqual([expired.Id, oldestRetained.Id]);
     }
 
     [Fact]
@@ -66,6 +67,6 @@ public sealed class RetentionPlannerTests
             TimeSpan.FromDays(30),
             100);
 
-        Assert.Empty(result);
+        result.Must().BeEmpty();
     }
 }
