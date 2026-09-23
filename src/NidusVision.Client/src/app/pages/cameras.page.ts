@@ -1,7 +1,9 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
+import { CameraApi } from '../api/camera.api';
 import { CameraStore } from '../camera.store';
 import { StatusPill } from '../ui/status-pill';
 import { AddCameraDialog } from '../add-camera.dialog';
+import { CameraItem } from '../models';
 
 @Component({
   selector: 'app-cameras-page',
@@ -27,7 +29,7 @@ import { AddCameraDialog } from '../add-camera.dialog';
               <div><dt>Framerate</dt><dd>{{ camera.fps }} fps</dd></div>
               <div><dt>Retention</dt><dd>{{ camera.retention }}</dd></div>
             </dl>
-            <button type="button" class="btn outline sm full">Configure</button>
+            <button type="button" class="btn outline sm full" (click)="configure(camera.id)">Configure</button>
           </article>
         }
       </div>
@@ -50,6 +52,20 @@ import { AddCameraDialog } from '../add-camera.dialog';
           </table>
         </div>
       </section>
+      @if (editing(); as cam) {
+        <div class="modal-scrim" (click)="editing.set(null)">
+          <div class="modal card" (click)="$event.stopPropagation()">
+            <h3>Configure {{ cam.name }}</h3>
+            <label>Name<input class="input" [value]="cam.name" (input)="cam.name = $any($event.target).value"></label>
+            <label>RTSP<input class="input mono" [value]="cam.mainRtspUrl" (input)="cam.mainRtspUrl = $any($event.target).value"></label>
+            <label>Location<input class="input" [value]="cam.location" (input)="cam.location = $any($event.target).value"></label>
+            <div class="modal-actions">
+              <button type="button" class="btn outline" (click)="editing.set(null)">Cancel</button>
+              <button type="button" class="btn" (click)="save(cam)">Save</button>
+            </div>
+          </div>
+        </div>
+      }
     </div>
   `,
   styles: `
@@ -71,8 +87,35 @@ import { AddCameraDialog } from '../add-camera.dialog';
 export class CamerasPage {
   protected readonly store = inject(CameraStore);
   private readonly addDialog = inject(AddCameraDialog);
+  private readonly api = inject(CameraApi);
+  protected readonly editing = signal<CameraItem | null>(null);
 
   protected openAdd(): void {
     this.addDialog.open.set(true);
+  }
+
+  protected configure(id: string): void {
+    const camera = this.store.cameras().find(c => c.id === id);
+    this.editing.set(camera ? { ...camera } : null);
+  }
+
+  protected async save(camera: CameraItem): Promise<void> {
+    try {
+      await this.api.update(camera.id, {
+        name: camera.name,
+        location: camera.location,
+        enabled: true,
+        mainRtspUrl: camera.mainRtspUrl,
+        subRtspUrl: null,
+        username: null,
+        password: null,
+        transport: 'tcp',
+        roiJson: null,
+      });
+    } catch {
+      /* mock mode */
+    }
+    this.store.cameras.update(list => list.map(c => c.id === camera.id ? camera : c));
+    this.editing.set(null);
   }
 }

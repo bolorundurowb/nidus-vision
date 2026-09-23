@@ -17,6 +17,7 @@ export class App {
   protected readonly addDialog = inject(AddCameraDialog);
   protected readonly sidebarOpen = signal(true);
   protected readonly page = signal<PageId>('monitor');
+  protected readonly loginScreen = signal(false);
   protected readonly nav = [
     { id: 'monitor' as const, label: 'Monitor Center', path: '/monitor' },
     { id: 'events' as const, label: 'Events & Library', path: '/events' },
@@ -26,8 +27,13 @@ export class App {
 
   constructor() {
     this.router.events.pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd)).subscribe(e => {
+      const login = e.urlAfterRedirects.startsWith('/login');
+      this.loginScreen.set(login);
       const id = this.nav.find(n => e.urlAfterRedirects.startsWith(n.path))?.id ?? 'monitor';
       this.page.set(id);
+      if (!login) {
+        void this.store.refresh();
+      }
     });
   }
 
@@ -35,8 +41,8 @@ export class App {
     return this.nav.find(n => n.id === this.page()) ?? this.nav[0];
   }
 
-  protected addCamera(name: string, url: string): void {
-    this.store.addCamera(name, url);
+  protected async addCamera(name: string, url: string): Promise<void> {
+    await this.store.addCamera(name, url);
     this.addDialog.open.set(false);
     void this.router.navigateByUrl('/cameras');
   }
