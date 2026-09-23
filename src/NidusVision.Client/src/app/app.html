@@ -1,0 +1,60 @@
+<div class="shell" [class.collapsed]="!sidebarOpen()">
+  <aside>
+    <div class="brand">
+      <span class="logo">NV</span>
+      @if (sidebarOpen()) {
+        <strong>Nidus Vision</strong>
+      }
+      <button type="button" class="icon-btn" (click)="sidebarOpen.set(!sidebarOpen())" aria-label="Toggle sidebar">☰</button>
+    </div>
+    <nav>
+      @for (item of nav; track item.id) {
+        <a [routerLink]="item.path" routerLinkActive="active">
+          <span class="nav-mark"></span>
+          @if (sidebarOpen()) { <span>{{ item.label }}</span> }
+        </a>
+      }
+    </nav>
+    @if (sidebarOpen()) {
+      <div class="sys">
+        <p>System status</p>
+        <span>All systems operational</span>
+        <span>2.3 TB / 4 TB used</span>
+        <span>{{ store.recordingCount() }} active recordings</span>
+      </div>
+    }
+  </aside>
+  <main>
+    <header>
+      <div>
+        <h1>{{ current().label }}</h1>
+        <p>Nidus Vision · Local instance</p>
+      </div>
+      <div class="hdr-meta">
+        <span class="live-count"><i class="dot recording"></i>{{ store.recordingCount() }} recording</span>
+      </div>
+    </header>
+    <router-outlet />
+  </main>
+</div>
+
+@if (addDialog.open()) {
+  <div class="modal-scrim" (click)="addDialog.open.set(false)">
+    <div class="modal card" (click)="$event.stopPropagation()">
+      <div class="modal-head">
+        <div>
+          <h2>Add IP camera</h2>
+          <p class="muted">Connect an RTSP stream to Nidus Vision.</p>
+        </div>
+        <button type="button" class="icon-btn" (click)="addDialog.open.set(false)" aria-label="Close dialog">✕</button>
+      </div>
+      <label>Camera name<input #name class="input" placeholder="e.g. Side Gate"></label>
+      <label>RTSP stream URL<input #url class="input mono" placeholder="rtsp://192.168.1.20:554/stream"></label>
+      <p class="hint">A stream preview will be available after saving.</p>
+      <div class="modal-actions">
+        <button type="button" class="btn outline" (click)="addDialog.open.set(false)">Cancel</button>
+        <button type="button" class="btn" (click)="addCamera(name.value, url.value)">Save camera</button>
+      </div>
+    </div>
+  </div>
+}
