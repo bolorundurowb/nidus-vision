@@ -52,6 +52,7 @@ app.MapLiveEndpoints();
 app.MapTimelineEndpoints();
 app.MapEventEndpoints();
 app.MapHub<CameraStatusHub>("/hubs/status");
+app.MapHub<DetectionHub>("/hubs/detections");
 app.MapFallbackToFile("index.html").AllowAnonymous();
 
 app.Run();

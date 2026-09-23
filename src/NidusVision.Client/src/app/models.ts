@@ -11,6 +11,7 @@ export interface CameraItem {
   retention: string;
   location: string;
   mainRtspUrl: string;
+  roiJson?: string | null;
 }
 
 export const CAMERA_SEED: CameraItem[] = [

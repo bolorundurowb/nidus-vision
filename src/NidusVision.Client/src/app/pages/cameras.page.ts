@@ -59,6 +59,8 @@ import { CameraItem } from '../models';
             <label>Name<input class="input" [value]="cam.name" (input)="cam.name = $any($event.target).value"></label>
             <label>RTSP<input class="input mono" [value]="cam.mainRtspUrl" (input)="cam.mainRtspUrl = $any($event.target).value"></label>
             <label>Location<input class="input" [value]="cam.location" (input)="cam.location = $any($event.target).value"></label>
+            <p class="muted">Region of interest — click to add polygon points</p>
+            <canvas width="320" height="180" class="roi" (click)="addPoint($event, cam)"></canvas>
             <div class="modal-actions">
               <button type="button" class="btn outline" (click)="editing.set(null)">Cancel</button>
               <button type="button" class="btn" (click)="save(cam)">Save</button>
@@ -82,6 +84,7 @@ import { CameraItem } from '../models';
     th { color: var(--muted-foreground); font-size: 0.75rem; font-weight: 500; padding: 0.75rem 0.5rem; }
     td { padding: 0.75rem 0.5rem; border-top: 1px solid var(--border); }
     .mono { font-family: ui-monospace, monospace; font-size: 0.75rem; color: var(--muted-foreground); }
+    .roi { width: 100%; background: #0f172a; border-radius: 0.5rem; cursor: crosshair; }
   `,
 })
 export class CamerasPage {
@@ -99,6 +102,22 @@ export class CamerasPage {
     this.editing.set(camera ? { ...camera } : null);
   }
 
+  protected addPoint(event: MouseEvent, camera: CameraItem): void {
+    const canvas = event.target as HTMLCanvasElement;
+    const rect = canvas.getBoundingClientRect();
+    const x = (event.clientX - rect.left) / rect.width;
+    const y = (event.clientY - rect.top) / rect.height;
+    const points = camera.roiJson ? JSON.parse(camera.roiJson) as { x: number; y: number }[] : [];
+    points.push({ x, y });
+    camera.roiJson = JSON.stringify(points);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.fillStyle = '#f97316';
+    ctx.beginPath();
+    ctx.arc(x * canvas.width, y * canvas.height, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   protected async save(camera: CameraItem): Promise<void> {
     try {
       await this.api.update(camera.id, {
@@ -110,7 +129,7 @@ export class CamerasPage {
         username: null,
         password: null,
         transport: 'tcp',
-        roiJson: null,
+        roiJson: camera.roiJson ?? null,
       });
     } catch {
       /* mock mode */

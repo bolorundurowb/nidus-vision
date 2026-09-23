@@ -34,6 +34,7 @@
           <p>Nidus Vision · Local instance</p>
         </div>
         <div class="hdr-meta">
+          <button type="button" class="icon-btn" (click)="alerts.open.set(!alerts.open())" aria-label="Notifications">Alerts</button>
           <span class="live-count"><i class="dot recording"></i>{{ store.recordingCount() }} recording</span>
         </div>
       </header>
@@ -61,4 +62,16 @@
       </div>
     </div>
   }
+}
+
+@if (alerts.open()) {
+  <aside class="tray card">
+    <h3>Notifications</h3>
+    @for (item of alerts.items(); track item.eventId) {
+      <p><strong>{{ item.cameraName }}</strong> · {{ (item.confidence * 100).toFixed(0) }}%</p>
+    }
+    @if (alerts.items().length === 0) {
+      <p class="muted">No human detections yet.</p>
+    }
+  </aside>
 }

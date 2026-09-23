@@ -64,6 +64,7 @@ export class CameraApi {
       retention: '—',
       location: dto.location,
       mainRtspUrl: dto.mainRtspUrl,
+      roiJson: dto.roiJson,
     };
   }
 }

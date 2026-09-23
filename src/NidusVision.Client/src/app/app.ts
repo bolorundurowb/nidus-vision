@@ -3,6 +3,7 @@ import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } fro
 import { filter } from 'rxjs';
 import { CameraStore } from './camera.store';
 import { AddCameraDialog } from './add-camera.dialog';
+import { DetectionAlerts } from './detection.alerts';
 import { PageId } from './models';
 
 @Component({
@@ -15,6 +16,7 @@ export class App {
   private readonly router = inject(Router);
   protected readonly store = inject(CameraStore);
   protected readonly addDialog = inject(AddCameraDialog);
+  protected readonly alerts = inject(DetectionAlerts);
   protected readonly sidebarOpen = signal(true);
   protected readonly page = signal<PageId>('monitor');
   protected readonly loginScreen = signal(false);
