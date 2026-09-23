@@ -1,4 +1,5 @@
-import { Component, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
+import { SettingsApi } from '../api/settings.api';
 
 @Component({
   selector: 'app-settings-page',
@@ -16,16 +17,16 @@ import { Component, signal } from '@angular/core';
             <p class="muted">Automatically remove oldest recordings at the limit.</p>
             <label>
               <span>General video retention <strong>{{ general() }} days</strong></span>
-              <input type="range" min="1" max="90" [value]="general()" (input)="general.set(+$any($event.target).value)">
+              <input type="range" min="1" max="90" [value]="general()" (input)="general.set(+$any($event.target).value); persist()">
             </label>
             <label>
               <span>Human detection events <strong>{{ detection() }} days</strong></span>
-              <input type="range" min="7" max="180" [value]="detection()" (input)="detection.set(+$any($event.target).value)">
+              <input type="range" min="7" max="180" [value]="detection()" (input)="detection.set(+$any($event.target).value); persist()">
             </label>
           </div>
           <div class="card pad">
             <h3>System & hardware</h3>
-            <p class="muted">Nidus Vision 0.8.2 · Self-hosted instance</p>
+            <p class="muted">Nidus Vision {{ version() }} · Self-hosted instance</p>
             <div class="stats">
               <div><p class="muted">CPU usage</p><strong>12%</strong><span class="ok">Healthy</span></div>
               <div><p class="muted">Memory</p><strong>2.4 / 8 GB</strong><span class="ok">Healthy</span></div>
@@ -35,8 +36,8 @@ import { Component, signal } from '@angular/core';
         </section>
         <section class="card pad">
           <h3>Storage allocation</h3>
-          <p class="muted">2.3 TB of 4 TB used</p>
-          <div class="donut"><div><strong>57%</strong><span class="muted">used</span></div></div>
+          <p class="muted">{{ usedLabel() }}</p>
+          <div class="donut"><div><strong>{{ usedPct() }}%</strong><span class="muted">used</span></div></div>
           <ul>
             <li><span>General video</span><strong>1.24 TB</strong></li>
             <li><span>Human events</span><strong>414 GB</strong></li>
@@ -67,6 +68,45 @@ import { Component, signal } from '@angular/core';
   `,
 })
 export class SettingsPage {
+  private readonly api = inject(SettingsApi);
   protected readonly general = signal(30);
   protected readonly detection = signal(90);
+  protected readonly version = signal('0.8.2');
+  protected readonly usedLabel = signal('2.3 TB of 4 TB used');
+  protected readonly usedPct = signal(57);
+
+  constructor() {
+    void this.load();
+  }
+
+  private async load(): Promise<void> {
+    try {
+      const settings = await this.api.get();
+      this.general.set(settings.generalRetentionDays);
+      this.detection.set(settings.detectionRetentionDays);
+      const metrics = await this.api.metrics();
+      this.version.set(metrics.version);
+      if (metrics.storage.totalBytes > 0) {
+        this.usedPct.set(Math.round((metrics.storage.usedBytes / metrics.storage.totalBytes) * 100));
+        this.usedLabel.set(`${this.gb(metrics.storage.usedBytes)} of ${this.gb(metrics.storage.totalBytes)} used`);
+      }
+    } catch {
+      /* mock */
+    }
+  }
+
+  protected persist(): void {
+    void this.api.save({
+      generalRetentionDays: this.general(),
+      detectionRetentionDays: this.detection(),
+      maxStorageBytes: null,
+      inferenceEnabled: true,
+      sampleFps: 1,
+      confidenceThreshold: 0.6,
+    }).catch(() => undefined);
+  }
+
+  private gb(bytes: number): string {
+    return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  }
 }

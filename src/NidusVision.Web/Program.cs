@@ -3,6 +3,7 @@ using NidusVision.Streaming;
 using NidusVision.Web;
 using NidusVision.Web.Auth;
 using NidusVision.Web.Cameras;
+using NidusVision.Web.Settings;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,6 +12,7 @@ builder.Services.AddNidusAuth();
 builder.Services.AddDataProtection();
 builder.Services.AddSingleton<RtspProbe>();
 builder.Services.AddScoped<CameraService>();
+builder.Services.AddScoped<SettingsService>();
 builder.Services.AddHealthChecks();
 
 var app = builder.Build();
@@ -26,6 +28,7 @@ app.UseStaticFiles();
 app.MapNidusHealth();
 app.MapAuthEndpoints();
 app.MapCameraEndpoints();
+app.MapSettingsEndpoints();
 app.MapFallbackToFile("index.html").AllowAnonymous();
 
 app.Run();
