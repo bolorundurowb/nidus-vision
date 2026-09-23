@@ -480,3 +480,11 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Nidus local data
+data/
+recordings/
+node_modules/
+dist/
+.angular/
+
