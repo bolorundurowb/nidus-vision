@@ -48,6 +48,7 @@ a { color: inherit; text-decoration: none; }
 .btn.outline { background: var(--card); color: var(--foreground); border-color: var(--border); }
 .btn.sm { padding: 0.35rem 0.7rem; font-size: 0.75rem; }
 .btn.full { width: 100%; }
+.btn.pill { border-radius: 999px; }
 .btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .card { background: var(--card); border: 1px solid var(--border); border-radius: 0.75rem; }
 .pill { display: inline-flex; align-items: center; gap: 0.4rem; border-radius: 999px; border: 1px solid; padding: 0.2rem 0.5rem; font-size: 11px; font-weight: 500; }

@@ -1,5 +1,5 @@
 import { afterNextRender, Component, ElementRef, input, signal, viewChild } from '@angular/core';
-import { CameraItem } from '../models';
+import { CameraItem, fpsLabel, statLabel } from '../models';
 import { StatusPill } from './status-pill';
 
 @Component({
@@ -14,7 +14,7 @@ import { StatusPill } from './status-pill';
         }
         <div class="top"><span class="chip">{{ camera().name }}</span><app-status-pill [status]="camera().status" /></div>
         <div class="bot">
-          <span>{{ camera().resolution }} · {{ camera().fps }} fps</span>
+          <span>{{ statLabel(camera().resolution) }} · {{ fpsLabel(camera().fps) }}</span>
           <span>Live</span>
         </div>
       </div>
@@ -38,6 +38,8 @@ import { StatusPill } from './status-pill';
 export class LiveTile {
   readonly camera = input.required<CameraItem>();
   protected readonly error = signal<string | null>(null);
+  protected readonly statLabel = statLabel;
+  protected readonly fpsLabel = fpsLabel;
   private readonly video = viewChild<ElementRef<HTMLVideoElement>>('video');
 
   constructor() {

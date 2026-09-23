@@ -16,6 +16,7 @@ services:
       FFMPEG_PATH: /usr/bin/ffmpeg
       Storage__DataDirectory: /app/data
       Storage__RecordingsDirectory: /var/nidus/recordings
+      Storage__EventsDirectory: /var/nidus/events
       # LIBVA_DRIVER_NAME: iHD
       # OPENVINO_DEVICE: GPU
       # NIDUS_PERSON_MODEL: /app/models/person.onnx
@@ -28,6 +29,7 @@ services:
     volumes:
       - nidus-data:/app/data
       - nidus-recordings:/var/nidus/recordings
+      - nidus-events:/var/nidus/events
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -38,3 +40,4 @@ services:
 volumes:
   nidus-data:
   nidus-recordings:
+  nidus-events:

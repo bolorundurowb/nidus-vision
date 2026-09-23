@@ -3,7 +3,8 @@ import { CameraApi, ProbeResult, cameraWrite } from '../api/camera.api';
 import { CameraStore } from '../camera.store';
 import { StatusPill } from '../ui/status-pill';
 import { AddCameraDialog } from '../add-camera.dialog';
-import { CameraItem } from '../models';
+import { CameraItem, fpsLabel, statLabel } from '../models';
+import { AppIcon } from '../ui/app-icon';
 
 interface RoiPoint {
   x: number;
@@ -12,7 +13,7 @@ interface RoiPoint {
 
 @Component({
   selector: 'app-cameras-page',
-  imports: [StatusPill],
+  imports: [StatusPill, AppIcon],
   template: `
     <div class="page">
       <div class="toolbar">
@@ -21,20 +22,31 @@ interface RoiPoint {
           <h2 class="page-title">IP cameras</h2>
           <p class="muted">Manage streams, connectivity, and retention per device.</p>
         </div>
-        <button type="button" class="btn" (click)="openAdd()">Add camera</button>
+        <button type="button" class="btn pill" (click)="openAdd()">
+          <app-icon name="plus" />Add camera
+        </button>
       </div>
       <div class="grid cams">
         @for (camera of store.cameras(); track camera.id) {
           <article class="card cam">
+            <div class="cam-top">
+              <span class="cam-icon"><app-icon name="camera" /></span>
+              <button type="button" class="icon-btn" (click)="configure(camera.id)" aria-label="Configure {{ camera.name }}">
+                <app-icon name="ellipsis-vertical" />
+              </button>
+            </div>
             <h3>{{ camera.name }}</h3>
             <p class="muted">{{ camera.location }} · RTSP</p>
             <app-status-pill [status]="camera.status" />
             <dl>
-              <div><dt>Bitrate</dt><dd>{{ camera.bitrate }}</dd></div>
-              <div><dt>Framerate</dt><dd>{{ camera.fps }} fps</dd></div>
-              <div><dt>Retention</dt><dd>{{ camera.retention }}</dd></div>
+              <div><dt>Resolution</dt><dd>{{ statLabel(camera.resolution) }}</dd></div>
+              <div><dt>Bitrate</dt><dd>{{ statLabel(camera.bitrate) }}</dd></div>
+              <div><dt>Framerate</dt><dd>{{ fpsLabel(camera.fps) }}</dd></div>
+              <div><dt>Retention</dt><dd>{{ statLabel(camera.retention) }}</dd></div>
             </dl>
-            <button type="button" class="btn outline sm full" (click)="configure(camera.id)">Configure</button>
+            <button type="button" class="btn outline sm full" (click)="configure(camera.id)">
+              <app-icon name="settings" />Configure
+            </button>
           </article>
         }
       </div>
@@ -49,7 +61,7 @@ interface RoiPoint {
                 <tr>
                   <td>{{ c.name }}</td>
                   <td class="url mono">{{ c.mainRtspUrl }}</td>
-                  <td>{{ c.resolution }}</td>
+                  <td>{{ statLabel(c.resolution) }}</td>
                   <td><app-status-pill [status]="c.status" /></td>
                 </tr>
               }
@@ -65,7 +77,9 @@ interface RoiPoint {
                 <h2>Configure {{ cam.name }}</h2>
                 <p class="muted">Stream details, credentials, and detection area.</p>
               </div>
-              <button type="button" class="icon-btn" (click)="close()" aria-label="Close dialog">✕</button>
+              <button type="button" class="icon-btn" (click)="close()" aria-label="Close dialog">
+                <app-icon name="x" />
+              </button>
             </div>
             <label>Name<input class="input" [value]="cam.name" (input)="cam.name = $any($event.target).value"></label>
             <label>RTSP URL<input class="input mono" [value]="cam.mainRtspUrl" (input)="cam.mainRtspUrl = $any($event.target).value"></label>
@@ -90,7 +104,9 @@ interface RoiPoint {
             <div class="roi-block">
               <div class="roi-head">
                 <span>Region of interest</span>
-                <button type="button" class="btn outline sm" (click)="roiPoints.set([])">Clear</button>
+                <button type="button" class="btn outline sm" (click)="roiPoints.set([])">
+                  <app-icon name="x" />Clear
+                </button>
               </div>
               <p class="muted small">Click inside the frame to add polygon points.</p>
               <svg class="roi" viewBox="0 0 320 180" (click)="addPoint($event)">
@@ -103,11 +119,15 @@ interface RoiPoint {
               </svg>
             </div>
             <div class="modal-actions">
-              <button type="button" class="btn outline" (click)="close()">Cancel</button>
-              <button type="button" class="btn outline" [disabled]="probing()" (click)="testConnection(cam)">
-                {{ probing() ? 'Testing…' : 'Test connection' }}
+              <button type="button" class="btn outline" (click)="close()">
+                <app-icon name="x" />Cancel
               </button>
-              <button type="button" class="btn" (click)="save(cam)">Save</button>
+              <button type="button" class="btn outline" [disabled]="probing()" (click)="testConnection(cam)">
+                <app-icon name="plug" />{{ probing() ? 'Testing…' : 'Test connection' }}
+              </button>
+              <button type="button" class="btn" (click)="save(cam)">
+                <app-icon name="save" />Save
+              </button>
             </div>
           </div>
         </div>
@@ -118,6 +138,9 @@ interface RoiPoint {
     .toolbar { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; flex-wrap: wrap; }
     .cams { grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); }
     .cam { padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+    .cam-top { display: flex; align-items: flex-start; justify-content: space-between; }
+    .cam-icon { width: 2.25rem; height: 2.25rem; border-radius: 0.5rem; background: var(--muted); color: var(--foreground); display: grid; place-items: center; }
+    .cam .icon-btn { margin: -0.25rem -0.35rem 0 0; color: var(--muted-foreground); }
     h3 { margin: 0; font-weight: 500; }
     dl { margin: 0; border-top: 1px solid var(--border); padding-top: 0.75rem; font-size: 0.75rem; }
     dl div { display: flex; justify-content: space-between; margin-bottom: 0.35rem; }
@@ -134,7 +157,7 @@ interface RoiPoint {
     .roi { width: 100%; aspect-ratio: 16 / 9; max-height: 11rem; background: #0f172a; border-radius: 0.5rem; cursor: crosshair; }
     .roi polygon { fill: rgb(249 115 22 / 0.25); stroke: var(--orange); stroke-width: 2; }
     .roi circle { fill: var(--orange); }
-    .icon-btn { border: 0; background: transparent; color: inherit; padding: 0.25rem 0.4rem; border-radius: 0.35rem; }
+    .icon-btn { border: 0; background: transparent; color: inherit; padding: 0.25rem 0.4rem; border-radius: 0.35rem; display: inline-grid; place-items: center; }
   `,
 })
 export class CamerasPage {
@@ -147,6 +170,8 @@ export class CamerasPage {
   protected readonly password = signal('');
   protected readonly probing = signal(false);
   protected readonly probeResult = signal<ProbeResult | null>(null);
+  protected readonly statLabel = statLabel;
+  protected readonly fpsLabel = fpsLabel;
 
   protected openAdd(): void {
     this.addDialog.open.set(true);
@@ -182,7 +207,11 @@ export class CamerasPage {
     this.probing.set(true);
     this.probeResult.set(null);
     try {
-      this.probeResult.set(await this.api.probe(this.writeBody(camera)));
+      const result = await this.api.probe(this.writeBody(camera));
+      this.probeResult.set(result);
+      if (result.ok) {
+        this.applyStreamInfo(camera.id, result);
+      }
     } catch {
       this.probeResult.set({ ok: false, message: 'Could not reach the server to test this camera.' });
     } finally {
@@ -195,11 +224,21 @@ export class CamerasPage {
     const updated: CameraItem = { ...camera, roiJson };
     try {
       const saved = await this.api.update(camera.id, this.writeBody(updated));
-      this.store.cameras.update(list => list.map(c => (c.id === camera.id ? { ...this.api.toItem(saved), resolution: c.resolution, fps: c.fps, bitrate: c.bitrate, retention: c.retention } : c)));
+      this.store.cameras.update(list => list.map(c => (c.id === camera.id ? this.api.toItem(saved) : c)));
     } catch {
       this.store.cameras.update(list => list.map(c => (c.id === camera.id ? updated : c)));
     }
     this.close();
+  }
+
+  /** A probe reports the live stream details before ingest has had a chance to persist them. */
+  private applyStreamInfo(id: string, result: ProbeResult): void {
+    if (!result.resolution && !result.fps) {
+      return;
+    }
+    this.store.cameras.update(list => list.map(c => (c.id === id
+      ? { ...c, resolution: result.resolution ?? c.resolution, fps: result.fps ?? c.fps }
+      : c)));
   }
 
   private writeBody(camera: CameraItem) {

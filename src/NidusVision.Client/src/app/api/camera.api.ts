@@ -16,6 +16,10 @@ export interface CameraDto {
   transport: string;
   status: string;
   roiJson: string | null;
+  resolution: string | null;
+  fps: number | null;
+  bitrate: string | null;
+  retention: string | null;
 }
 
 export interface CameraWrite {
@@ -93,10 +97,10 @@ export class CameraApi {
       id: dto.id,
       name: dto.name,
       status: (dto.status as CameraStatus) || 'offline',
-      resolution: '—',
-      fps: 0,
-      bitrate: '—',
-      retention: '—',
+      resolution: dto.resolution ?? null,
+      fps: dto.fps ?? null,
+      bitrate: dto.bitrate ?? null,
+      retention: dto.retention ?? null,
       location: dto.location,
       mainRtspUrl: redactRtspUrl(dto.mainRtspUrl, dto.hasPassword),
       roiJson: dto.roiJson,
