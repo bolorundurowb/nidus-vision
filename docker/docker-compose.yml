@@ -1,0 +1,28 @@
+services:
+  nidus-vision:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: nidus-vision
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      TZ: UTC
+      Storage__DataDirectory: /app/data
+      Storage__RecordingsDirectory: /var/nidus/recordings
+    volumes:
+      - nidus-data:/app/data
+      - nidus-recordings:/var/nidus/recordings
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  nidus-data:
+  nidus-recordings:

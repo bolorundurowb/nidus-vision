@@ -15,7 +15,11 @@ await app.InitializeNidusDatabaseAsync();
 app.UseAuthentication();
 app.UseAuthorization();
 
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
 app.MapNidusHealth();
 app.MapAuthEndpoints();
+app.MapFallbackToFile("index.html").AllowAnonymous();
 
 app.Run();
