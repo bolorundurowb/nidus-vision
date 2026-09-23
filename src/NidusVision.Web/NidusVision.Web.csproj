@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\NidusVision.Core\NidusVision.Core.csproj" />
+    <ProjectReference Include="..\NidusVision.Data\NidusVision.Data.csproj" />
+    <ProjectReference Include="..\NidusVision.Streaming\NidusVision.Streaming.csproj" />
+    <ProjectReference Include="..\NidusVision.Inference\NidusVision.Inference.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+</Project>

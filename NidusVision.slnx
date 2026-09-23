@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/NidusVision.Core/NidusVision.Core.csproj" />
+    <Project Path="src/NidusVision.Data/NidusVision.Data.csproj" />
+    <Project Path="src/NidusVision.Inference/NidusVision.Inference.csproj" />
+    <Project Path="src/NidusVision.Streaming/NidusVision.Streaming.csproj" />
+    <Project Path="src/NidusVision.Web/NidusVision.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/NidusVision.Tests/NidusVision.Tests.csproj" />
+  </Folder>
+</Solution>
