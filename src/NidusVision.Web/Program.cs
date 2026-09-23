@@ -3,6 +3,7 @@ using NidusVision.Streaming;
 using NidusVision.Web;
 using NidusVision.Web.Auth;
 using NidusVision.Web.Cameras;
+using NidusVision.Web.Ingest;
 using NidusVision.Web.Settings;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -13,7 +14,10 @@ builder.Services.AddDataProtection();
 builder.Services.AddSingleton<RtspProbe>();
 builder.Services.AddScoped<CameraService>();
 builder.Services.AddScoped<SettingsService>();
-builder.Services.AddHealthChecks();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<ReconnectBackoff>();
+builder.Services.AddSingleton<FfmpegSegmentProcess>();
+builder.Services.AddHostedService<CameraIngestHostedService>();
 
 var app = builder.Build();
 
