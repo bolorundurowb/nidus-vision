@@ -36,6 +36,10 @@ dotnet test NidusVision.slnx
 
 Unit tests cover timeline merge, retention, ROI, detection overlap, event filters, and reconnect backoff.
 
+## CI
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on pushes to `main` and `stack/**`, and on pull requests: Release `dotnet build`/`dotnet test`, Angular production build, and a Docker image build (not pushed).
+
 ## Docker
 
 ```bash
