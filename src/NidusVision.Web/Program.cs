@@ -27,6 +27,7 @@ builder.Services.AddSingleton<FfmpegSegmentProcess>();
 builder.Services.AddSingleton<CameraStatusTracker>();
 builder.Services.AddSignalR();
 builder.Services.AddHostedService<CameraIngestHostedService>();
+builder.Services.AddHostedService<RetentionWorker>();
 builder.Services.AddHealthChecks();
 
 var app = builder.Build();
