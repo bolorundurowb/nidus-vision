@@ -23,6 +23,7 @@ builder.Services.AddScoped<LiveStreamService>();
 builder.Services.AddScoped<SettingsService>();
 builder.Services.AddScoped<TimelineService>();
 builder.Services.AddScoped<EventLibraryService>();
+builder.Services.AddSingleton<EventArtifactStore>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ReconnectBackoff>();
 builder.Services.AddSingleton<FfmpegSegmentProcess>();
@@ -38,11 +39,28 @@ var app = builder.Build();
 
 await app.InitializeNidusDatabaseAsync();
 
+if (FfmpegExecutable.IsAvailable())
+{
+    app.Logger.LogInformation("Using FFmpeg at {FfmpegPath}", FfmpegExecutable.FileName);
+}
+else
+{
+    app.Logger.LogWarning(
+        "FFmpeg was not found at {FfmpegPath}. Ingest, probe, and live require the Docker image (or FFMPEG_PATH / FFmpeg on PATH for local development).",
+        FfmpegExecutable.FileName);
+}
+
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.UseDefaultFiles();
-app.UseStaticFiles();
+// wwwroot is populated by the Angular production/Docker build. During local API-only
+// `dotnet run`, the SPA is served from ng serve (port 4200) and this folder is absent.
+var webRootExists = Directory.Exists(app.Environment.WebRootPath);
+if (webRootExists)
+{
+    app.UseDefaultFiles();
+    app.UseStaticFiles();
+}
 
 app.MapNidusHealth();
 app.MapAuthEndpoints();
@@ -53,6 +71,9 @@ app.MapTimelineEndpoints();
 app.MapEventEndpoints();
 app.MapHub<CameraStatusHub>("/hubs/status");
 app.MapHub<DetectionHub>("/hubs/detections");
-app.MapFallbackToFile("index.html").AllowAnonymous();
+if (webRootExists)
+{
+    app.MapFallbackToFile("index.html").AllowAnonymous();
+}
 
 app.Run();

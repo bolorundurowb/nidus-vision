@@ -6,12 +6,14 @@ using NidusVision.Core.Inference;
 using NidusVision.Core.Models;
 using NidusVision.Data;
 using NidusVision.Inference;
+using NidusVision.Web.Events;
 
 namespace NidusVision.Web.Inference;
 
 public sealed class DetectionHostedService(
     IServiceScopeFactory scopes,
     HumanDetector detector,
+    EventArtifactStore eventArtifacts,
     ILogger<DetectionHostedService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -23,7 +25,7 @@ public sealed class DetectionHostedService(
             {
                 await using var scope = scopes.CreateAsyncScope();
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-                var settings = await db.AppSettings.AsNoTracking().FirstAsync(stoppingToken);
+                var settings = await db.AppSettings.AsNoTracking().OrderBy(s => s.Id).FirstAsync(stoppingToken);
                 if (!settings.InferenceEnabled)
                 {
                     continue;
@@ -38,22 +40,49 @@ public sealed class DetectionHostedService(
         }
     }
 
-    public static async Task PersistDetectionAsync(AppDbContext db, Guid cameraId, float confidence, DateTimeOffset start, DateTimeOffset end, CancellationToken cancellationToken)
+    public async Task PersistDetectionAsync(AppDbContext db, Guid cameraId, float confidence, DateTimeOffset start, DateTimeOffset end, CancellationToken cancellationToken)
+        => await PersistDetectionWithArtifactsAsync(
+            db,
+            eventArtifacts,
+            cameraId,
+            confidence,
+            start,
+            end,
+            cancellationToken);
+
+    public static async Task PersistDetectionWithArtifactsAsync(
+        AppDbContext db,
+        EventArtifactStore eventArtifacts,
+        Guid cameraId,
+        float confidence,
+        DateTimeOffset start,
+        DateTimeOffset end,
+        CancellationToken cancellationToken)
     {
-        db.DetectionEvents.Add(new DetectionEvent
+        var detection = new DetectionEvent
         {
             CameraId = cameraId,
             StartUtc = start,
             EndUtc = end,
             Confidence = confidence,
-        });
+        };
+        db.DetectionEvents.Add(detection);
+
         var segments = await db.RecordingSegments.Where(s => s.CameraId == cameraId).ToListAsync(cancellationToken);
-        foreach (var segment in segments)
+        var overlapping = segments
+            .Where(segment => DetectionOverlap.Overlaps(segment.StartUtc, segment.EndUtc, start, end))
+            .OrderBy(segment => segment.StartUtc)
+            .ToList();
+        foreach (var segment in overlapping)
         {
-            if (DetectionOverlap.Overlaps(segment.StartUtc, segment.EndUtc, start, end))
-            {
-                segment.HasHuman = true;
-            }
+            segment.HasHuman = true;
+        }
+
+        detection.SegmentIdsJson = System.Text.Json.JsonSerializer.Serialize(overlapping.Select(s => s.Id));
+        var source = overlapping.Select(s => s.Path).FirstOrDefault(File.Exists);
+        if (source is not null)
+        {
+            detection.ClipPath = await eventArtifacts.SaveClipAsync(detection, source, cancellationToken);
         }
 
         await db.SaveChangesAsync(cancellationToken);

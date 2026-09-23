@@ -1,9 +1,14 @@
 import { Component, inject, signal } from '@angular/core';
-import { CameraApi } from '../api/camera.api';
+import { CameraApi, ProbeResult, cameraWrite } from '../api/camera.api';
 import { CameraStore } from '../camera.store';
 import { StatusPill } from '../ui/status-pill';
 import { AddCameraDialog } from '../add-camera.dialog';
 import { CameraItem } from '../models';
+
+interface RoiPoint {
+  x: number;
+  y: number;
+}
 
 @Component({
   selector: 'app-cameras-page',
@@ -43,7 +48,7 @@ import { CameraItem } from '../models';
               @for (c of store.cameras(); track c.id) {
                 <tr>
                   <td>{{ c.name }}</td>
-                  <td class="mono">{{ c.mainRtspUrl }}</td>
+                  <td class="url mono">{{ c.mainRtspUrl }}</td>
                   <td>{{ c.resolution }}</td>
                   <td><app-status-pill [status]="c.status" /></td>
                 </tr>
@@ -53,16 +58,55 @@ import { CameraItem } from '../models';
         </div>
       </section>
       @if (editing(); as cam) {
-        <div class="modal-scrim" (click)="editing.set(null)">
+        <div class="modal-scrim" (click)="close()">
           <div class="modal card" (click)="$event.stopPropagation()">
-            <h3>Configure {{ cam.name }}</h3>
+            <div class="modal-head">
+              <div>
+                <h2>Configure {{ cam.name }}</h2>
+                <p class="muted">Stream details, credentials, and detection area.</p>
+              </div>
+              <button type="button" class="icon-btn" (click)="close()" aria-label="Close dialog">✕</button>
+            </div>
             <label>Name<input class="input" [value]="cam.name" (input)="cam.name = $any($event.target).value"></label>
-            <label>RTSP<input class="input mono" [value]="cam.mainRtspUrl" (input)="cam.mainRtspUrl = $any($event.target).value"></label>
+            <label>RTSP URL<input class="input mono" [value]="cam.mainRtspUrl" (input)="cam.mainRtspUrl = $any($event.target).value"></label>
             <label>Location<input class="input" [value]="cam.location" (input)="cam.location = $any($event.target).value"></label>
-            <p class="muted">Region of interest — click to add polygon points</p>
-            <canvas width="320" height="180" class="roi" (click)="addPoint($event, cam)"></canvas>
+            <div class="field-pair">
+              <label>
+                Username
+                <input class="input" autocomplete="off" [value]="username()" (input)="username.set($any($event.target).value)">
+              </label>
+              <label>
+                Password
+                <input class="input" type="password" autocomplete="new-password" [value]="password()" (input)="password.set($any($event.target).value)">
+              </label>
+            </div>
+            @if (probeResult(); as result) {
+              <p class="hint" [class.ok]="result.ok" [class.error]="!result.ok">{{ result.message }}</p>
+            } @else {
+              <p class="hint">
+                {{ cam.hasCredentials ? 'Credentials are stored. Leave blank to keep them.' : 'This camera has no stored credentials yet.' }}
+              </p>
+            }
+            <div class="roi-block">
+              <div class="roi-head">
+                <span>Region of interest</span>
+                <button type="button" class="btn outline sm" (click)="roiPoints.set([])">Clear</button>
+              </div>
+              <p class="muted small">Click inside the frame to add polygon points.</p>
+              <svg class="roi" viewBox="0 0 320 180" (click)="addPoint($event)">
+                @if (roiPoints().length > 1) {
+                  <polygon [attr.points]="polygon()" />
+                }
+                @for (point of roiPoints(); track $index) {
+                  <circle [attr.cx]="point.x * 320" [attr.cy]="point.y * 180" r="4" />
+                }
+              </svg>
+            </div>
             <div class="modal-actions">
-              <button type="button" class="btn outline" (click)="editing.set(null)">Cancel</button>
+              <button type="button" class="btn outline" (click)="close()">Cancel</button>
+              <button type="button" class="btn outline" [disabled]="probing()" (click)="testConnection(cam)">
+                {{ probing() ? 'Testing…' : 'Test connection' }}
+              </button>
               <button type="button" class="btn" (click)="save(cam)">Save</button>
             </div>
           </div>
@@ -83,8 +127,14 @@ import { CameraItem } from '../models';
     table { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 0.875rem; text-align: left; }
     th { color: var(--muted-foreground); font-size: 0.75rem; font-weight: 500; padding: 0.75rem 0.5rem; }
     td { padding: 0.75rem 0.5rem; border-top: 1px solid var(--border); }
-    .mono { font-family: ui-monospace, monospace; font-size: 0.75rem; color: var(--muted-foreground); }
-    .roi { width: 100%; background: #0f172a; border-radius: 0.5rem; cursor: crosshair; }
+    td.url { color: var(--muted-foreground); }
+    .small { font-size: 0.75rem; margin: 0; }
+    .roi-block { display: flex; flex-direction: column; gap: 0.4rem; }
+    .roi-head { display: flex; align-items: center; justify-content: space-between; font-size: 0.75rem; font-weight: 500; }
+    .roi { width: 100%; aspect-ratio: 16 / 9; max-height: 11rem; background: #0f172a; border-radius: 0.5rem; cursor: crosshair; }
+    .roi polygon { fill: rgb(249 115 22 / 0.25); stroke: var(--orange); stroke-width: 2; }
+    .roi circle { fill: var(--orange); }
+    .icon-btn { border: 0; background: transparent; color: inherit; padding: 0.25rem 0.4rem; border-radius: 0.35rem; }
   `,
 })
 export class CamerasPage {
@@ -92,6 +142,11 @@ export class CamerasPage {
   private readonly addDialog = inject(AddCameraDialog);
   private readonly api = inject(CameraApi);
   protected readonly editing = signal<CameraItem | null>(null);
+  protected readonly roiPoints = signal<RoiPoint[]>([]);
+  protected readonly username = signal('');
+  protected readonly password = signal('');
+  protected readonly probing = signal(false);
+  protected readonly probeResult = signal<ProbeResult | null>(null);
 
   protected openAdd(): void {
     this.addDialog.open.set(true);
@@ -99,42 +154,74 @@ export class CamerasPage {
 
   protected configure(id: string): void {
     const camera = this.store.cameras().find(c => c.id === id);
+    this.username.set('');
+    this.password.set('');
+    this.probeResult.set(null);
+    this.roiPoints.set(camera ? parseRoi(camera.roiJson) : []);
     this.editing.set(camera ? { ...camera } : null);
   }
 
-  protected addPoint(event: MouseEvent, camera: CameraItem): void {
-    const canvas = event.target as HTMLCanvasElement;
-    const rect = canvas.getBoundingClientRect();
-    const x = (event.clientX - rect.left) / rect.width;
-    const y = (event.clientY - rect.top) / rect.height;
-    const points = camera.roiJson ? JSON.parse(camera.roiJson) as { x: number; y: number }[] : [];
-    points.push({ x, y });
-    camera.roiJson = JSON.stringify(points);
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.fillStyle = '#f97316';
-    ctx.beginPath();
-    ctx.arc(x * canvas.width, y * canvas.height, 4, 0, Math.PI * 2);
-    ctx.fill();
+  protected close(): void {
+    this.editing.set(null);
+    this.probeResult.set(null);
+  }
+
+  protected polygon(): string {
+    return this.roiPoints().map(p => `${p.x * 320},${p.y * 180}`).join(' ');
+  }
+
+  protected addPoint(event: MouseEvent): void {
+    const rect = (event.currentTarget as SVGSVGElement).getBoundingClientRect();
+    this.roiPoints.update(points => [
+      ...points,
+      { x: (event.clientX - rect.left) / rect.width, y: (event.clientY - rect.top) / rect.height },
+    ]);
+  }
+
+  protected async testConnection(camera: CameraItem): Promise<void> {
+    this.probing.set(true);
+    this.probeResult.set(null);
+    try {
+      this.probeResult.set(await this.api.probe(this.writeBody(camera)));
+    } catch {
+      this.probeResult.set({ ok: false, message: 'Could not reach the server to test this camera.' });
+    } finally {
+      this.probing.set(false);
+    }
   }
 
   protected async save(camera: CameraItem): Promise<void> {
+    const roiJson = this.roiPoints().length ? JSON.stringify(this.roiPoints()) : null;
+    const updated: CameraItem = { ...camera, roiJson };
     try {
-      await this.api.update(camera.id, {
-        name: camera.name,
-        location: camera.location,
-        enabled: true,
-        mainRtspUrl: camera.mainRtspUrl,
-        subRtspUrl: null,
-        username: null,
-        password: null,
-        transport: 'tcp',
-        roiJson: camera.roiJson ?? null,
-      });
+      const saved = await this.api.update(camera.id, this.writeBody(updated));
+      this.store.cameras.update(list => list.map(c => (c.id === camera.id ? { ...this.api.toItem(saved), resolution: c.resolution, fps: c.fps, bitrate: c.bitrate, retention: c.retention } : c)));
     } catch {
-      /* mock mode */
+      this.store.cameras.update(list => list.map(c => (c.id === camera.id ? updated : c)));
     }
-    this.store.cameras.update(list => list.map(c => c.id === camera.id ? camera : c));
-    this.editing.set(null);
+    this.close();
+  }
+
+  private writeBody(camera: CameraItem) {
+    return cameraWrite({
+      name: camera.name,
+      url: camera.mainRtspUrl,
+      location: camera.location,
+      username: this.username(),
+      password: this.password(),
+      roiJson: camera.roiJson ?? null,
+    });
+  }
+}
+
+function parseRoi(roiJson: string | null | undefined): RoiPoint[] {
+  if (!roiJson) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(roiJson) as RoiPoint[];
+    return Array.isArray(parsed) ? parsed.filter(p => typeof p?.x === 'number' && typeof p?.y === 'number') : [];
+  } catch {
+    return [];
   }
 }

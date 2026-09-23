@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using NidusVision.Core.Contracts;
 
 namespace NidusVision.Streaming;
@@ -9,34 +8,25 @@ public sealed class RtspProbe
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(url);
         var transportArg = transport.Equals("udp", StringComparison.OrdinalIgnoreCase) ? "udp" : "tcp";
-        using var process = new Process
+        using var process = FfmpegExecutable.Create(startInfo =>
         {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = "ffmpeg",
-                ArgumentList =
-                {
-                    "-hide_banner",
-                    "-rtsp_transport",
-                    transportArg,
-                    "-i",
-                    url,
-                    "-t",
-                    "2",
-                    "-f",
-                    "null",
-                    "-",
-                },
-                RedirectStandardError = true,
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            },
-        };
+            startInfo.ArgumentList.Add("-hide_banner");
+            startInfo.ArgumentList.Add("-rtsp_transport");
+            startInfo.ArgumentList.Add(transportArg);
+            startInfo.ArgumentList.Add("-timeout");
+            startInfo.ArgumentList.Add("10000000");
+            startInfo.ArgumentList.Add("-i");
+            startInfo.ArgumentList.Add(url);
+            startInfo.ArgumentList.Add("-t");
+            startInfo.ArgumentList.Add("2");
+            startInfo.ArgumentList.Add("-f");
+            startInfo.ArgumentList.Add("null");
+            startInfo.ArgumentList.Add("-");
+        });
 
         try
         {
-            process.Start();
+            FfmpegExecutable.Start(process);
         }
         catch (Exception ex)
         {
@@ -47,7 +37,8 @@ public sealed class RtspProbe
         await process.WaitForExitAsync(cancellationToken);
         var (resolution, fps) = ParseStreamInfo(stderr);
         var ok = process.ExitCode is 0 || resolution is not null;
-        return new ProbeResult(ok, ok ? "Stream reachable." : "Could not open RTSP stream.", resolution, fps);
+        var message = ok ? "Stream reachable." : FfmpegErrorLog.Describe(stderr, "Could not open the RTSP stream.");
+        return new ProbeResult(ok, message, resolution, fps);
     }
 
     internal static (string? Resolution, int? Fps) ParseStreamInfo(string ffmpegLog)

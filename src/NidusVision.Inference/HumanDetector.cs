@@ -15,7 +15,9 @@ public sealed class HumanDetector : IDisposable
         var model = Environment.GetEnvironmentVariable("NIDUS_PERSON_MODEL") ?? "models/person.onnx";
         if (!File.Exists(model))
         {
-            logger.LogWarning("Person model not found at {Path}; inference disabled until a model is provided.", model);
+            logger.LogInformation(
+                "Person model not found at {Path}; person detection stays off until you set NIDUS_PERSON_MODEL or place an ONNX file there.",
+                model);
             return;
         }
 

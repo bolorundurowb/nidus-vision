@@ -2,13 +2,15 @@ import { Component, inject, signal } from '@angular/core';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs';
 import { CameraStore } from './camera.store';
+import { CameraApi, ProbeResult, cameraWrite } from './api/camera.api';
 import { AddCameraDialog } from './add-camera.dialog';
 import { DetectionAlerts } from './detection.alerts';
 import { PageId } from './models';
+import { AppIcon, AppIconName } from './ui/app-icon';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, AppIcon],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
@@ -20,11 +22,14 @@ export class App {
   protected readonly sidebarOpen = signal(true);
   protected readonly page = signal<PageId>('monitor');
   protected readonly loginScreen = signal(false);
-  protected readonly nav = [
-    { id: 'monitor' as const, label: 'Monitor Center', path: '/monitor' },
-    { id: 'events' as const, label: 'Events & Library', path: '/events' },
-    { id: 'cameras' as const, label: 'IP Cameras', path: '/cameras' },
-    { id: 'settings' as const, label: 'Settings', path: '/settings' },
+  protected readonly probing = signal(false);
+  protected readonly probeResult = signal<ProbeResult | null>(null);
+  private readonly cameraApi = inject(CameraApi);
+  protected readonly nav: ReadonlyArray<{ id: PageId; label: string; path: string; icon: AppIconName }> = [
+    { id: 'monitor', label: 'Monitor Center', path: '/monitor', icon: 'layout-grid' },
+    { id: 'events', label: 'Events & Library', path: '/events', icon: 'archive' },
+    { id: 'cameras', label: 'IP Cameras', path: '/cameras', icon: 'camera' },
+    { id: 'settings', label: 'Settings', path: '/settings', icon: 'settings' },
   ];
 
   constructor() {
@@ -43,9 +48,22 @@ export class App {
     return this.nav.find(n => n.id === this.page()) ?? this.nav[0];
   }
 
-  protected async addCamera(name: string, url: string): Promise<void> {
-    await this.store.addCamera(name, url);
+  protected async addCamera(name: string, url: string, username: string, password: string): Promise<void> {
+    await this.store.addCamera(name, url, username, password);
     this.addDialog.open.set(false);
+    this.probeResult.set(null);
     void this.router.navigateByUrl('/cameras');
+  }
+
+  protected async testConnection(url: string, username: string, password: string): Promise<void> {
+    this.probing.set(true);
+    this.probeResult.set(null);
+    try {
+      this.probeResult.set(await this.cameraApi.probe(cameraWrite({ name: 'Probe', url, username, password })));
+    } catch {
+      this.probeResult.set({ ok: false, message: 'Could not reach the server to test this camera.' });
+    } finally {
+      this.probing.set(false);
+    }
   }
 }

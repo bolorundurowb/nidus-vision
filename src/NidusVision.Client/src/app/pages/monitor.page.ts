@@ -2,10 +2,11 @@ import { Component, inject, signal } from '@angular/core';
 import { CameraStore } from '../camera.store';
 import { StatusPill } from '../ui/status-pill';
 import { LiveTile } from '../ui/live-tile';
+import { AppIcon, AppIconName } from '../ui/app-icon';
 
 @Component({
   selector: 'app-monitor-page',
-  imports: [LiveTile],
+  imports: [LiveTile, AppIcon],
   template: `
     <div class="page">
       <div class="toolbar">
@@ -20,7 +21,17 @@ import { LiveTile } from '../ui/live-tile';
               <button type="button" [class.on]="grid() === n" (click)="grid.set(n)">{{ n }}×{{ n }}</button>
             }
           </div>
-          <button type="button" class="btn outline sm">Refresh</button>
+          <button
+            type="button"
+            class="btn outline sm refresh"
+            [class.ok]="refreshResult() === 'ok'"
+            [class.error]="refreshResult() === 'error'"
+            [disabled]="refreshing()"
+            (click)="refresh()"
+          >
+            <app-icon [name]="refreshIcon()" [class.spin]="refreshing()" />
+            <span role="status" aria-live="polite">{{ refreshLabel() }}</span>
+          </button>
         </div>
       </div>
       <div class="feeds" [attr.data-grid]="grid()">
@@ -53,6 +64,12 @@ import { LiveTile } from '../ui/live-tile';
     .seg { display: flex; border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.2rem; background: var(--card); }
     .seg button { border: 0; background: transparent; color: var(--muted-foreground); padding: 0.35rem 0.7rem; border-radius: 0.35rem; font-size: 0.75rem; }
     .seg button.on { background: var(--primary); color: var(--primary-foreground); }
+    /* Fixed width so the toolbar never reflows as the label changes between states. */
+    .btn.refresh { min-width: 8.5rem; }
+    .btn.refresh.ok { color: #059669; border-color: rgb(16 185 129 / 0.4); }
+    .btn.refresh.error { color: #b91c1c; border-color: rgb(239 68 68 / 0.4); }
+    app-icon.spin { animation: spin 0.9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
     .feeds { display: grid; gap: 1rem; }
     .feeds[data-grid='1'] { grid-template-columns: 1fr; }
     .feeds[data-grid='2'] { grid-template-columns: repeat(2, 1fr); }
@@ -81,4 +98,44 @@ import { LiveTile } from '../ui/live-tile';
 export class MonitorPage {
   protected readonly store = inject(CameraStore);
   protected readonly grid = signal(2);
+  protected readonly refreshing = signal(false);
+  protected readonly refreshResult = signal<'ok' | 'error' | null>(null);
+  private resultTimer?: ReturnType<typeof setTimeout>;
+
+  protected refreshLabel(): string {
+    if (this.refreshing()) {
+      return 'Refreshing…';
+    }
+    switch (this.refreshResult()) {
+      case 'ok':
+        return 'Feeds updated';
+      case 'error':
+        return 'Refresh failed';
+      default:
+        return 'Refresh';
+    }
+  }
+
+  protected refreshIcon(): AppIconName {
+    if (this.refreshing() || !this.refreshResult()) {
+      return 'refresh-cw';
+    }
+    return this.refreshResult() === 'ok' ? 'check' : 'triangle-alert';
+  }
+
+  protected async refresh(): Promise<void> {
+    if (this.refreshing()) {
+      return;
+    }
+    clearTimeout(this.resultTimer);
+    this.refreshResult.set(null);
+    this.refreshing.set(true);
+    try {
+      const ok = await this.store.refresh();
+      this.refreshResult.set(ok ? 'ok' : 'error');
+    } finally {
+      this.refreshing.set(false);
+      this.resultTimer = setTimeout(() => this.refreshResult.set(null), 3000);
+    }
+  }
 }

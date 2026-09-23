@@ -29,7 +29,7 @@ public sealed class LocalAuthService(AppDbContext db, PasswordHasher<LocalUser> 
     public async Task<bool> VerifyAsync(string password, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(password);
-        var user = await db.LocalUsers.FirstOrDefaultAsync(cancellationToken);
+        var user = await db.LocalUsers.OrderBy(u => u.Id).FirstOrDefaultAsync(cancellationToken);
         if (user is null)
         {
             return false;

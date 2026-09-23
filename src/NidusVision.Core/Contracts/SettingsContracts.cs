@@ -6,7 +6,8 @@ public sealed record SettingsResponse(
     long? MaxStorageBytes,
     bool InferenceEnabled,
     float SampleFps,
-    float ConfidenceThreshold);
+    float ConfidenceThreshold,
+    string RecordingsDirectory);
 
 public sealed record SettingsWriteRequest(
     int GeneralRetentionDays,

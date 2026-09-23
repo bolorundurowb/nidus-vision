@@ -1,7 +1,8 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
-import { CameraApi, CameraWrite } from './api/camera.api';
+import { CameraApi, CameraWrite, cameraWrite } from './api/camera.api';
 import { CAMERA_SEED, CameraItem, CameraStatus } from './models';
+import { redactRtspUrl } from './rtsp-url';
 
 @Injectable({ providedIn: 'root' })
 export class CameraStore {
@@ -26,27 +27,19 @@ export class CameraStore {
     void connection.start().catch(() => undefined);
   }
 
-  async refresh(): Promise<void> {
+  async refresh(): Promise<boolean> {
     try {
       const list = await this.api.list();
       this.cameras.set(list.map(c => this.api.toItem(c)));
+      return true;
     } catch {
       // Keep mock seed when the API is offline (ng serve without backend).
+      return false;
     }
   }
 
-  async addCamera(name: string, url: string): Promise<void> {
-    const body: CameraWrite = {
-      name: name || 'New Camera',
-      location: 'Unassigned',
-      enabled: true,
-      mainRtspUrl: url || 'rtsp://192.168.1.20:554/stream',
-      subRtspUrl: null,
-      username: null,
-      password: null,
-      transport: 'tcp',
-      roiJson: null,
-    };
+  async addCamera(name: string, url: string, username?: string, password?: string): Promise<void> {
+    const body: CameraWrite = cameraWrite({ name, url, username, password });
     try {
       const created = await this.api.create(body);
       this.cameras.update(list => [...list, this.api.toItem(created)]);
@@ -62,7 +55,7 @@ export class CameraStore {
           bitrate: '—',
           retention: '—',
           location: body.location,
-          mainRtspUrl: body.mainRtspUrl,
+          mainRtspUrl: redactRtspUrl(body.mainRtspUrl),
         },
       ]);
     }

@@ -11,6 +11,10 @@ export interface SettingsDto {
   confidenceThreshold: number;
 }
 
+export interface SettingsReadDto extends SettingsDto {
+  recordingsDirectory: string;
+}
+
 export interface MetricsDto {
   cpuPercent: number;
   memoryUsedBytes: number;
@@ -24,7 +28,7 @@ export interface MetricsDto {
 @Injectable({ providedIn: 'root' })
 export class SettingsApi {
   private readonly http = inject(HttpClient);
-  get() { return firstValueFrom(this.http.get<SettingsDto>('/api/settings')); }
+  get() { return firstValueFrom(this.http.get<SettingsReadDto>('/api/settings')); }
   save(body: SettingsDto) { return firstValueFrom(this.http.put<SettingsDto>('/api/settings', body)); }
   metrics() { return firstValueFrom(this.http.get<MetricsDto>('/api/system/metrics')); }
 }

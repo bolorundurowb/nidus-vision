@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NidusVision.Data;
 
@@ -10,9 +11,11 @@ using NidusVision.Data;
 namespace NidusVision.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260923141902_StoreTimestampsAsUtcTicks")]
+    partial class StoreTimestampsAsUtcTicks
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
@@ -114,10 +117,6 @@ namespace NidusVision.Data.Migrations
                     b.Property<Guid>("CameraId")
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("ClipPath")
-                        .HasMaxLength(2048)
-                        .HasColumnType("TEXT");
-
                     b.Property<float>("Confidence")
                         .HasColumnType("REAL");
 
@@ -131,7 +130,6 @@ namespace NidusVision.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("ThumbnailPath")
-                        .HasMaxLength(2048)
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");

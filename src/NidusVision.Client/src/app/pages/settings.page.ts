@@ -23,6 +23,23 @@ import { SettingsApi } from '../api/settings.api';
               <span>Human detection events <strong>{{ detection() }} days</strong></span>
               <input type="range" min="7" max="180" [value]="detection()" (input)="detection.set(+$any($event.target).value); persist()">
             </label>
+            <label>
+              <span>Maximum recording storage <strong>{{ storageLimitLabel() }}</strong></span>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                placeholder="No limit"
+                [value]="storageLimitGb() ?? ''"
+                (change)="setStorageLimit($any($event.target).value)"
+              >
+            </label>
+            <p class="muted help">Leave blank for no storage cap. When the cap is reached, the oldest recordings are removed first.</p>
+            <label>
+              <span>Recordings folder</span>
+              <input type="text" readonly [value]="recordingsDirectory()" aria-readonly="true">
+            </label>
+            <p class="muted help">Resolved from server configuration. Select the path to copy it.</p>
           </div>
           <div class="card pad">
             <h3>System & hardware</h3>
@@ -57,6 +74,9 @@ import { SettingsApi } from '../api/settings.api';
     label { display: block; margin-top: 1.25rem; font-size: 0.875rem; }
     label span { display: flex; justify-content: space-between; margin-bottom: 0.4rem; }
     input[type=range] { width: 100%; accent-color: var(--primary); }
+    input[type=number], input[type=text] { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 0.4rem; padding: 0.55rem; background: var(--card); color: inherit; }
+    input[type=text][readonly] { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.8rem; cursor: text; }
+    .help { margin: 0.5rem 0 0; font-size: 0.75rem; }
     .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-top: 1rem; }
     .stats div { border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.75rem; }
     .ok { color: #059669; font-size: 11px; }
@@ -71,6 +91,12 @@ export class SettingsPage {
   private readonly api = inject(SettingsApi);
   protected readonly general = signal(30);
   protected readonly detection = signal(90);
+  protected readonly storageLimitGb = signal<number | null>(null);
+  protected readonly storageLimitLabel = signal('No limit');
+  protected readonly recordingsDirectory = signal('Unavailable');
+  private readonly inferenceEnabled = signal(true);
+  private readonly sampleFps = signal(1);
+  private readonly confidenceThreshold = signal(0.6);
   protected readonly version = signal('0.8.2');
   protected readonly usedLabel = signal('2.3 TB of 4 TB used');
   protected readonly usedPct = signal(57);
@@ -87,6 +113,13 @@ export class SettingsPage {
       const settings = await this.api.get();
       this.general.set(settings.generalRetentionDays);
       this.detection.set(settings.detectionRetentionDays);
+      this.setStorageLimitValue(settings.maxStorageBytes);
+      if (settings.recordingsDirectory) {
+        this.recordingsDirectory.set(settings.recordingsDirectory);
+      }
+      this.inferenceEnabled.set(settings.inferenceEnabled);
+      this.sampleFps.set(settings.sampleFps);
+      this.confidenceThreshold.set(settings.confidenceThreshold);
       const metrics = await this.api.metrics();
       this.version.set(metrics.version);
       this.cpu.set(`${metrics.cpuPercent.toFixed(0)}%`);
@@ -105,11 +138,28 @@ export class SettingsPage {
     void this.api.save({
       generalRetentionDays: this.general(),
       detectionRetentionDays: this.detection(),
-      maxStorageBytes: null,
-      inferenceEnabled: true,
-      sampleFps: 1,
-      confidenceThreshold: 0.6,
+      maxStorageBytes: this.storageLimitGb() === null ? null : this.storageLimitGb()! * 1024 ** 3,
+      inferenceEnabled: this.inferenceEnabled(),
+      sampleFps: this.sampleFps(),
+      confidenceThreshold: this.confidenceThreshold(),
     }).catch(() => undefined);
+  }
+
+  protected setStorageLimit(value: string): void {
+    const gigabytes = value === '' ? null : Number(value);
+    if (gigabytes !== null && (!Number.isFinite(gigabytes) || gigabytes < 1)) {
+      return;
+    }
+
+    this.storageLimitGb.set(gigabytes);
+    this.storageLimitLabel.set(gigabytes === null ? 'No limit' : `${gigabytes} GB`);
+    this.persist();
+  }
+
+  private setStorageLimitValue(bytes: number | null): void {
+    const gigabytes = bytes === null ? null : bytes / 1024 ** 3;
+    this.storageLimitGb.set(gigabytes);
+    this.storageLimitLabel.set(gigabytes === null ? 'No limit' : `${gigabytes} GB`);
   }
 
   private gb(bytes: number): string {

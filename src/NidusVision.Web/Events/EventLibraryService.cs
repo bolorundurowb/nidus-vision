@@ -35,6 +35,10 @@ public sealed class EventLibraryService(AppDbContext db)
         {
             File.Delete(path);
         }
+        if (entity.ClipPath is { } clipPath && File.Exists(clipPath))
+        {
+            File.Delete(clipPath);
+        }
 
         db.DetectionEvents.Remove(entity);
         await db.SaveChangesAsync(cancellationToken);
@@ -49,6 +53,12 @@ public sealed class EventLibraryService(AppDbContext db)
             return null;
         }
 
+        if (entity.ClipPath is { } clipPath && File.Exists(clipPath))
+        {
+            return clipPath;
+        }
+
+        // Backward compatibility for events created before dedicated clips were introduced.
         var segment = await db.RecordingSegments.AsNoTracking()
             .Where(s => s.CameraId == entity.CameraId && s.StartUtc <= entity.EndUtc && s.EndUtc >= entity.StartUtc)
             .OrderBy(s => s.StartUtc)

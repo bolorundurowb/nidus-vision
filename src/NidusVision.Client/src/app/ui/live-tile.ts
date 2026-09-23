@@ -1,4 +1,4 @@
-import { afterNextRender, Component, ElementRef, input, viewChild } from '@angular/core';
+import { afterNextRender, Component, ElementRef, input, signal, viewChild } from '@angular/core';
 import { CameraItem } from '../models';
 import { StatusPill } from './status-pill';
 
@@ -6,9 +6,12 @@ import { StatusPill } from './status-pill';
   selector: 'app-live-tile',
   imports: [StatusPill],
   template: `
-    <article class="feed" [class.off]="camera().status === 'offline'">
+    <article class="feed" [class.off]="camera().status === 'offline' && !!error()">
       <div class="video">
         <video #video muted autoplay playsinline></video>
+        @if (error(); as message) {
+          <p class="error">{{ message }}</p>
+        }
         <div class="top"><span class="chip">{{ camera().name }}</span><app-status-pill [status]="camera().status" /></div>
         <div class="bot">
           <span>{{ camera().resolution }} · {{ camera().fps }} fps</span>
@@ -26,10 +29,15 @@ import { StatusPill } from './status-pill';
     .top { top: 0.75rem; }
     .bot { bottom: 0.75rem; }
     .chip { background: rgb(0 0 0 / 0.5); padding: 0.2rem 0.5rem; border-radius: 0.35rem; }
+    .error {
+      position: absolute; inset: 2.75rem 1rem; margin: 0; display: grid; place-content: center;
+      text-align: center; color: #fca5a5; font-size: 0.75rem; line-height: 1.4;
+    }
   `,
 })
 export class LiveTile {
   readonly camera = input.required<CameraItem>();
+  protected readonly error = signal<string | null>(null);
   private readonly video = viewChild<ElementRef<HTMLVideoElement>>('video');
 
   constructor() {
@@ -38,9 +46,14 @@ export class LiveTile {
 
   private async attach(): Promise<void> {
     const el = this.video()?.nativeElement;
-    if (!el || this.camera().status === 'offline' || typeof MediaSource === 'undefined') {
+    if (!el) {
       return;
     }
+    if (typeof MediaSource === 'undefined') {
+      this.error.set('This browser cannot play live streams (no Media Source Extensions).');
+      return;
+    }
+
     const media = new MediaSource();
     el.src = URL.createObjectURL(media);
     await new Promise<void>(resolve => media.addEventListener('sourceopen', () => resolve(), { once: true }));
@@ -50,13 +63,17 @@ export class LiveTile {
     try {
       buffer = media.addSourceBuffer(type);
     } catch {
+      this.error.set('This browser cannot decode the camera video codec (H.264 expected).');
       return;
     }
+
     try {
       const response = await fetch(`/api/cameras/${this.camera().id}/live`, { credentials: 'include' });
       if (!response.ok || !response.body) {
+        this.error.set(await this.readError(response));
         return;
       }
+
       const reader = response.body.getReader();
       const queue: Uint8Array[] = [];
       const pump = async () => {
@@ -65,16 +82,33 @@ export class LiveTile {
           await new Promise(r => buffer.addEventListener('updateend', r, { once: true }));
         }
       };
+      let received = 0;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         if (value) {
+          received += value.byteLength;
           queue.push(value);
           await pump();
         }
       }
+      if (received === 0) {
+        this.error.set('The camera stream ended without sending any video.');
+      }
     } catch {
-      /* live unavailable */
+      this.error.set('The live stream was interrupted.');
     }
+  }
+
+  private async readError(response: Response): Promise<string> {
+    try {
+      const body = (await response.json()) as { message?: string };
+      if (body.message) {
+        return body.message;
+      }
+    } catch {
+      /* non-JSON error body */
+    }
+    return `Live stream unavailable (HTTP ${response.status}).`;
   }
 }

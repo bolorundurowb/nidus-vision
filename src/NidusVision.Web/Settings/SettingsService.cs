@@ -13,7 +13,7 @@ public sealed class SettingsService(AppDbContext db, IOptions<StorageOptions> st
 {
     public async Task<SettingsResponse> GetAsync(CancellationToken cancellationToken)
     {
-        var row = await db.AppSettings.AsNoTracking().FirstAsync(cancellationToken);
+        var row = await db.AppSettings.AsNoTracking().OrderBy(s => s.Id).FirstAsync(cancellationToken);
         return ToResponse(row);
     }
 
@@ -21,7 +21,12 @@ public sealed class SettingsService(AppDbContext db, IOptions<StorageOptions> st
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(request.GeneralRetentionDays, 1);
         ArgumentOutOfRangeException.ThrowIfLessThan(request.DetectionRetentionDays, 1);
-        var row = await db.AppSettings.FirstAsync(cancellationToken);
+        if (request.MaxStorageBytes is { } maxStorageBytes)
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(maxStorageBytes, 1);
+        }
+
+        var row = await db.AppSettings.OrderBy(s => s.Id).FirstAsync(cancellationToken);
         row.GeneralRetentionDays = request.GeneralRetentionDays;
         row.DetectionRetentionDays = request.DetectionRetentionDays;
         row.MaxStorageBytes = request.MaxStorageBytes;
@@ -36,7 +41,10 @@ public sealed class SettingsService(AppDbContext db, IOptions<StorageOptions> st
     {
         var recordings = Path.GetFullPath(storage.Value.RecordingsDirectory);
         Directory.CreateDirectory(recordings);
-        long used = DirSize(recordings);
+        long generalBytes = DirSize(recordings);
+        var events = Path.GetFullPath(storage.Value.EventsDirectory);
+        Directory.CreateDirectory(events);
+        long detectionBytes = DirSize(events);
         var dataDir = Path.GetFullPath(storage.Value.DataDirectory);
         Directory.CreateDirectory(dataDir);
         long dbBytes = DirSize(dataDir);
@@ -48,7 +56,12 @@ public sealed class SettingsService(AppDbContext db, IOptions<StorageOptions> st
             total = drive.IsReady ? drive.TotalSize : 0;
         }
 
-        return new StorageMetrics(used + dbBytes, total, used, 0, dbBytes);
+        return new StorageMetrics(
+            generalBytes + detectionBytes + dbBytes,
+            total,
+            generalBytes,
+            detectionBytes,
+            dbBytes);
     }
 
     public SystemMetricsResponse GetSystemMetrics()
@@ -69,13 +82,14 @@ public sealed class SettingsService(AppDbContext db, IOptions<StorageOptions> st
             version);
     }
 
-    private static SettingsResponse ToResponse(AppSettings row) => new(
+    private SettingsResponse ToResponse(AppSettings row) => new(
         row.GeneralRetentionDays,
         row.DetectionRetentionDays,
         row.MaxStorageBytes,
         row.InferenceEnabled,
         row.SampleFps,
-        row.ConfidenceThreshold);
+        row.ConfidenceThreshold,
+        Path.GetFullPath(storage.Value.RecordingsDirectory));
 
     private static long DirSize(string path) =>
         Directory.Exists(path)

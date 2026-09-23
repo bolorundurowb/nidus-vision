@@ -57,15 +57,15 @@ public sealed class CameraIngestHostedService(
                     return;
                 }
 
-                var password = cameras.UnprotectPassword(camera);
-                var url = camera.MainRtspUrl;
-                if (!string.IsNullOrWhiteSpace(camera.Username) && Uri.TryCreate(url, UriKind.Absolute, out var uri))
-                {
-                    url = new UriBuilder(uri) { UserName = camera.Username, Password = password ?? "" }.Uri.ToString();
-                }
+                var url = cameras.ResolveRtspUrl(camera);
 
                 var dir = Path.Combine(Path.GetFullPath(storage.RecordingsDirectory), camera.Id.ToString("N"), DateTime.UtcNow.ToString("yyyy"), DateTime.UtcNow.ToString("MM"), DateTime.UtcNow.ToString("dd"));
-                using var process = ffmpeg.Start(url, camera.Transport.ToString(), dir);
+                using var process = ffmpeg.Start(
+                    url,
+                    camera.Transport.ToString(),
+                    dir,
+                    storage.EffectiveSegmentDurationSeconds);
+                var errors = FfmpegExecutable.CaptureErrors(process);
                 camera.Status = CameraStatus.Recording;
                 await db.SaveChangesAsync(stoppingToken);
                 await statuses.SetAsync(camera.Id, CameraStatus.Recording, stoppingToken);
@@ -83,12 +83,13 @@ public sealed class CameraIngestHostedService(
 
                         await using var inner = scopes.CreateAsyncScope();
                         var innerDb = inner.ServiceProvider.GetRequiredService<AppDbContext>();
+                        var segmentStart = DateTimeOffset.UtcNow;
                         innerDb.RecordingSegments.Add(new RecordingSegment
                         {
                             CameraId = cameraId,
                             Path = args.FullPath,
-                            StartUtc = DateTimeOffset.UtcNow.AddSeconds(-10),
-                            EndUtc = DateTimeOffset.UtcNow,
+                            StartUtc = segmentStart,
+                            EndUtc = segmentStart.AddSeconds(storage.EffectiveSegmentDurationSeconds),
                             Codec = "copy",
                             ByteSize = info.Length,
                         });
@@ -101,6 +102,15 @@ public sealed class CameraIngestHostedService(
                 };
 
                 await process.WaitForExitAsync(stoppingToken);
+                if (process.ExitCode != 0)
+                {
+                    logger.LogWarning(
+                        "FFmpeg exited with {ExitCode} for camera {CameraId}: {Reason}",
+                        process.ExitCode,
+                        cameraId,
+                        errors.Describe("no FFmpeg diagnostics available"));
+                }
+
                 camera.Status = CameraStatus.Offline;
                 await db.SaveChangesAsync(stoppingToken);
                 await statuses.SetAsync(camera.Id, CameraStatus.Offline, stoppingToken);

@@ -12,6 +12,7 @@ export interface CameraItem {
   location: string;
   mainRtspUrl: string;
   roiJson?: string | null;
+  hasCredentials?: boolean;
 }
 
 export const CAMERA_SEED: CameraItem[] = [

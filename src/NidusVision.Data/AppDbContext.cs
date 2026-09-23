@@ -11,6 +11,11 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<AppSettings> AppSettings => Set<AppSettings>();
     public DbSet<LocalUser> LocalUsers => Set<LocalUser>();
 
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        configurationBuilder.Properties<DateTimeOffset>().HaveConversion<UtcTicksConverter>();
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Camera>(entity =>
@@ -38,6 +43,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         modelBuilder.Entity<DetectionEvent>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.Property(e => e.ClipPath).HasMaxLength(2048);
+            entity.Property(e => e.ThumbnailPath).HasMaxLength(2048);
             entity.HasIndex(e => new { e.CameraId, e.StartUtc });
             entity.HasIndex(e => e.Confidence);
             entity.HasOne(e => e.Camera)

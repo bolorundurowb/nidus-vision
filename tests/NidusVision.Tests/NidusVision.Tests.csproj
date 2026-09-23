@@ -23,6 +23,7 @@
     <ProjectReference Include="..\..\src\NidusVision.Data\NidusVision.Data.csproj" />
     <ProjectReference Include="..\..\src\NidusVision.Streaming\NidusVision.Streaming.csproj" />
     <ProjectReference Include="..\..\src\NidusVision.Inference\NidusVision.Inference.csproj" />
+    <ProjectReference Include="..\..\src\NidusVision.Web\NidusVision.Web.csproj" />
   </ItemGroup>
 
 </Project>

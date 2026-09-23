@@ -4,47 +4,47 @@ namespace NidusVision.Streaming;
 
 public sealed class FfmpegSegmentProcess
 {
-    public Process Start(string rtspUrl, string transport, string outputDirectory)
+    public Process Start(string rtspUrl, string transport, string outputDirectory, int segmentDurationSeconds)
+    {
+        var startInfo = CreateStartInfo(rtspUrl, transport, outputDirectory, segmentDurationSeconds);
+        var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
+        FfmpegExecutable.Start(process);
+        return process;
+    }
+
+    public ProcessStartInfo CreateStartInfo(string rtspUrl, string transport, string outputDirectory, int segmentDurationSeconds)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rtspUrl);
+        ArgumentOutOfRangeException.ThrowIfLessThan(segmentDurationSeconds, 1);
         Directory.CreateDirectory(outputDirectory);
         var transportArg = transport.Equals("udp", StringComparison.OrdinalIgnoreCase) ? "udp" : "tcp";
         var output = Path.Combine(outputDirectory, "%Y%m%dT%H%M%S.mp4");
-        var process = new Process
+        var process = FfmpegExecutable.Create(startInfo =>
         {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = "ffmpeg",
-                ArgumentList =
-                {
-                    "-hide_banner",
-                    "-loglevel",
-                    "warning",
-                    "-rtsp_transport",
-                    transportArg,
-                    "-i",
-                    rtspUrl,
-                    "-an",
-                    "-c",
-                    "copy",
-                    "-f",
-                    "segment",
-                    "-segment_time",
-                    "10",
-                    "-reset_timestamps",
-                    "1",
-                    "-strftime",
-                    "1",
-                    output,
-                },
-                RedirectStandardError = true,
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            },
-            EnableRaisingEvents = true,
-        };
-        process.Start();
-        return process;
+            startInfo.ArgumentList.Add("-hide_banner");
+            startInfo.ArgumentList.Add("-loglevel");
+            startInfo.ArgumentList.Add("warning");
+            startInfo.ArgumentList.Add("-rtsp_transport");
+            startInfo.ArgumentList.Add(transportArg);
+            startInfo.ArgumentList.Add("-i");
+            startInfo.ArgumentList.Add(rtspUrl);
+            startInfo.ArgumentList.Add("-an");
+            startInfo.ArgumentList.Add("-c");
+            startInfo.ArgumentList.Add("copy");
+            startInfo.ArgumentList.Add("-f");
+            startInfo.ArgumentList.Add("segment");
+            startInfo.ArgumentList.Add("-segment_time");
+            startInfo.ArgumentList.Add(Math.Min(
+                segmentDurationSeconds,
+                NidusVision.Core.Options.StorageOptions.MaxSegmentDurationSeconds).ToString());
+            startInfo.ArgumentList.Add("-break_non_keyframes");
+            startInfo.ArgumentList.Add("1");
+            startInfo.ArgumentList.Add("-reset_timestamps");
+            startInfo.ArgumentList.Add("1");
+            startInfo.ArgumentList.Add("-strftime");
+            startInfo.ArgumentList.Add("1");
+            startInfo.ArgumentList.Add(output);
+        });
+        return process.StartInfo;
     }
 }

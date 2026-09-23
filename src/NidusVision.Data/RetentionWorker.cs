@@ -29,7 +29,7 @@ public sealed class RetentionWorker(IServiceScopeFactory scopes, TimeProvider ti
     {
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var settings = await db.AppSettings.AsNoTracking().FirstAsync(cancellationToken);
+        var settings = await db.AppSettings.AsNoTracking().OrderBy(s => s.Id).FirstAsync(cancellationToken);
         var segments = await db.RecordingSegments.AsNoTracking().ToListAsync(cancellationToken);
         var infos = segments.Select(s => new SegmentRetentionInfo(s.Id, s.EndUtc, s.HasHuman, s.ByteSize, s.Path)).ToList();
         var purge = RetentionPlanner.SelectPurge(
@@ -53,7 +53,29 @@ public sealed class RetentionWorker(IServiceScopeFactory scopes, TimeProvider ti
             }
         }
 
+        var detectionCutoff = time.GetUtcNow() - TimeSpan.FromDays(settings.DetectionRetentionDays);
+        var expiredEvents = await db.DetectionEvents
+            .Where(e => e.EndUtc <= detectionCutoff)
+            .ToListAsync(cancellationToken);
+        foreach (var detection in expiredEvents)
+        {
+            DeleteIfExists(detection.ClipPath);
+            DeleteIfExists(detection.ThumbnailPath);
+            db.DetectionEvents.Remove(detection);
+        }
+
         await db.SaveChangesAsync(cancellationToken);
-        logger.LogInformation("Retention removed {Count} segments.", purge.Count);
+        logger.LogInformation(
+            "Retention removed {SegmentCount} segments and {EventCount} events.",
+            purge.Count,
+            expiredEvents.Count);
+    }
+
+    private static void DeleteIfExists(string? path)
+    {
+        if (path is not null && File.Exists(path))
+        {
+            File.Delete(path);
+        }
     }
 }

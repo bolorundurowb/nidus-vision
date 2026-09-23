@@ -56,6 +56,7 @@ public sealed class DetectionEvent
     public float Confidence { get; set; }
     public string? BoundingBoxJson { get; set; }
     public string? ThumbnailPath { get; set; }
+    public string? ClipPath { get; set; }
     public string? SegmentIdsJson { get; set; }
 }
 

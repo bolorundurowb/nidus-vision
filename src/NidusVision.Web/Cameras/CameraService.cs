@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using NidusVision.Core.Contracts;
 using NidusVision.Core.Models;
+using NidusVision.Core.Security;
 using NidusVision.Data;
 using NidusVision.Streaming;
 
@@ -58,25 +59,55 @@ public sealed class CameraService(AppDbContext db, IDataProtectionProvider prote
         return true;
     }
 
-    public Task<ProbeResult> ProbeAsync(CameraWriteRequest request, CancellationToken cancellationToken) =>
-        probe.ProbeAsync(BuildUrl(request.MainRtspUrl, request.Username, request.Password), request.Transport, cancellationToken);
+    public Task<ProbeResult> ProbeAsync(CameraWriteRequest request, CancellationToken cancellationToken)
+    {
+        var parts = RtspUrlCredentials.Split(request.MainRtspUrl);
+        var username = RtspUrlCredentials.MeaningfulUserInfo(parts.Username)
+            ?? RtspUrlCredentials.MeaningfulUserInfo(request.Username);
+        var password = RtspUrlCredentials.MeaningfulUserInfo(parts.Password)
+            ?? RtspUrlCredentials.MeaningfulUserInfo(request.Password);
+        return probe.ProbeAsync(BuildUrl(parts.UrlWithoutCredentials, username, password), request.Transport, cancellationToken);
+    }
 
     public string? UnprotectPassword(Camera camera) =>
         camera.PasswordProtected is null ? null : _protector.Unprotect(camera.PasswordProtected);
+
+    public string ResolveRtspUrl(Camera camera)
+    {
+        var parts = RtspUrlCredentials.Split(camera.MainRtspUrl);
+        var username = RtspUrlCredentials.MeaningfulUserInfo(camera.Username)
+            ?? RtspUrlCredentials.MeaningfulUserInfo(parts.Username);
+        var password = UnprotectPassword(camera)
+            ?? RtspUrlCredentials.MeaningfulUserInfo(parts.Password);
+        return BuildUrl(parts.UrlWithoutCredentials, username, password);
+    }
 
     private Camera Apply(Camera camera, CameraWriteRequest request)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Name);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.MainRtspUrl);
+
+        var main = RtspUrlCredentials.Split(request.MainRtspUrl);
         camera.Name = request.Name.Trim();
         camera.Location = string.IsNullOrWhiteSpace(request.Location) ? "Unassigned" : request.Location.Trim();
         camera.Enabled = request.Enabled;
-        camera.MainRtspUrl = request.MainRtspUrl.Trim();
-        camera.SubRtspUrl = string.IsNullOrWhiteSpace(request.SubRtspUrl) ? null : request.SubRtspUrl.Trim();
-        camera.Username = string.IsNullOrWhiteSpace(request.Username) ? null : request.Username;
-        if (!string.IsNullOrWhiteSpace(request.Password))
+        camera.MainRtspUrl = main.UrlWithoutCredentials;
+        camera.SubRtspUrl = string.IsNullOrWhiteSpace(request.SubRtspUrl)
+            ? null
+            : RtspUrlCredentials.Split(request.SubRtspUrl).UrlWithoutCredentials;
+
+        var username = RtspUrlCredentials.MeaningfulUserInfo(main.Username)
+            ?? RtspUrlCredentials.MeaningfulUserInfo(request.Username);
+        var password = RtspUrlCredentials.MeaningfulUserInfo(main.Password)
+            ?? RtspUrlCredentials.MeaningfulUserInfo(request.Password);
+        if (username is not null)
         {
-            camera.PasswordProtected = _protector.Protect(request.Password);
+            camera.Username = username;
+        }
+
+        if (password is not null)
+        {
+            camera.PasswordProtected = _protector.Protect(password);
         }
 
         camera.Transport = request.Transport.Equals("udp", StringComparison.OrdinalIgnoreCase)
@@ -86,21 +117,29 @@ public sealed class CameraService(AppDbContext db, IDataProtectionProvider prote
         return camera;
     }
 
-    private CameraResponse ToResponse(Camera camera) => new(
-        camera.Id,
-        camera.Name,
-        camera.Location,
-        camera.Enabled,
-        camera.MainRtspUrl,
-        camera.SubRtspUrl,
-        camera.Username,
-        camera.PasswordProtected is not null,
-        camera.Transport.ToString().ToLowerInvariant(),
-        camera.Status.ToString().ToLowerInvariant(),
-        camera.RoiJson,
-        null,
-        null,
-        null);
+    private CameraResponse ToResponse(Camera camera)
+    {
+        var main = RtspUrlCredentials.Split(camera.MainRtspUrl);
+        var hasPassword = camera.PasswordProtected is not null
+            || camera.Username is not null
+            || main.Username is not null
+            || main.Password is not null;
+        return new(
+            camera.Id,
+            camera.Name,
+            camera.Location,
+            camera.Enabled,
+            RtspUrlCredentials.Display(camera.MainRtspUrl, hasPassword),
+            camera.SubRtspUrl is null ? null : RtspUrlCredentials.Display(camera.SubRtspUrl, hasPassword),
+            null,
+            hasPassword,
+            camera.Transport.ToString().ToLowerInvariant(),
+            camera.Status.ToString().ToLowerInvariant(),
+            camera.RoiJson,
+            null,
+            null,
+            null);
+    }
 
     private static string BuildUrl(string url, string? username, string? password)
     {
