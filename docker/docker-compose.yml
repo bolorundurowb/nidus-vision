@@ -13,6 +13,15 @@ services:
       TZ: UTC
       Storage__DataDirectory: /app/data
       Storage__RecordingsDirectory: /var/nidus/recordings
+      # LIBVA_DRIVER_NAME: iHD
+      # OPENVINO_DEVICE: GPU
+      # NIDUS_PERSON_MODEL: /app/models/person.onnx
+    # devices:
+    #   - /dev/dri/renderD128:/dev/dri/renderD128
+    #   - /dev/dri/card0:/dev/dri/card0
+    # group_add:
+    #   - "44"
+    #   - "109"
     volumes:
       - nidus-data:/app/data
       - nidus-recordings:/var/nidus/recordings

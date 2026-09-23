@@ -28,9 +28,9 @@ import { SettingsApi } from '../api/settings.api';
             <h3>System & hardware</h3>
             <p class="muted">Nidus Vision {{ version() }} · Self-hosted instance</p>
             <div class="stats">
-              <div><p class="muted">CPU usage</p><strong>12%</strong><span class="ok">Healthy</span></div>
-              <div><p class="muted">Memory</p><strong>2.4 / 8 GB</strong><span class="ok">Healthy</span></div>
-              <div><p class="muted">Uptime</p><strong>45 days</strong><span class="ok">Since Aug 9</span></div>
+              <div><p class="muted">CPU usage</p><strong>{{ cpu() }}</strong><span class="ok">Healthy</span></div>
+              <div><p class="muted">Memory</p><strong>{{ memory() }}</strong><span class="ok">Healthy</span></div>
+              <div><p class="muted">Uptime</p><strong>{{ uptime() }}</strong><span class="ok">Process</span></div>
             </div>
           </div>
         </section>
@@ -74,6 +74,9 @@ export class SettingsPage {
   protected readonly version = signal('0.8.2');
   protected readonly usedLabel = signal('2.3 TB of 4 TB used');
   protected readonly usedPct = signal(57);
+  protected readonly cpu = signal('12%');
+  protected readonly memory = signal('2.4 / 8 GB');
+  protected readonly uptime = signal('45 days');
 
   constructor() {
     void this.load();
@@ -86,6 +89,9 @@ export class SettingsPage {
       this.detection.set(settings.detectionRetentionDays);
       const metrics = await this.api.metrics();
       this.version.set(metrics.version);
+      this.cpu.set(`${metrics.cpuPercent.toFixed(0)}%`);
+      this.memory.set(`${this.gb(metrics.memoryUsedBytes)} / ${this.gb(metrics.memoryTotalBytes)}`);
+      this.uptime.set(metrics.uptime);
       if (metrics.storage.totalBytes > 0) {
         this.usedPct.set(Math.round((metrics.storage.usedBytes / metrics.storage.totalBytes) * 100));
         this.usedLabel.set(`${this.gb(metrics.storage.usedBytes)} of ${this.gb(metrics.storage.totalBytes)} used`);

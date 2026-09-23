@@ -56,8 +56,11 @@ public sealed class SettingsService(AppDbContext db, IOptions<StorageOptions> st
         var process = Process.GetCurrentProcess();
         var storageMetrics = GetStorageMetrics();
         var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.8.2";
+        var cpu = Environment.ProcessorCount == 0
+            ? 0
+            : process.TotalProcessorTime.TotalMilliseconds / Math.Max(1, (DateTime.UtcNow - process.StartTime.ToUniversalTime()).TotalMilliseconds) / Environment.ProcessorCount * 100;
         return new SystemMetricsResponse(
-            0,
+            Math.Clamp(cpu, 0, 100),
             process.WorkingSet64,
             GC.GetGCMemoryInfo().TotalAvailableMemoryBytes,
             DateTimeOffset.UtcNow - process.StartTime.ToUniversalTime(),
