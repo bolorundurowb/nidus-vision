@@ -1,10 +1,11 @@
 import { Component, inject, signal } from '@angular/core';
 import { CameraStore } from '../camera.store';
 import { StatusPill } from '../ui/status-pill';
+import { LiveTile } from '../ui/live-tile';
 
 @Component({
   selector: 'app-monitor-page',
-  imports: [StatusPill],
+  imports: [LiveTile],
   template: `
     <div class="page">
       <div class="toolbar">
@@ -24,15 +25,7 @@ import { StatusPill } from '../ui/status-pill';
       </div>
       <div class="feeds" [attr.data-grid]="grid()">
         @for (camera of store.cameras().slice(0, grid() * grid()); track camera.id) {
-          <article class="feed" [class.off]="camera.status === 'offline'">
-            <div class="video">
-              <div class="top"><span class="chip">{{ camera.name }}</span><app-status-pill [status]="camera.status" /></div>
-              <div class="bot">
-                <span>{{ camera.resolution }} · {{ camera.fps }} fps</span>
-                <span>Live</span>
-              </div>
-            </div>
-          </article>
+          <app-live-tile [camera]="camera" />
         }
       </div>
       <section class="card timeline">
