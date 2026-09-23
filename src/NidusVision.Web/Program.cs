@@ -3,6 +3,7 @@ using NidusVision.Streaming;
 using NidusVision.Web;
 using NidusVision.Web.Auth;
 using NidusVision.Web.Cameras;
+using NidusVision.Web.Hubs;
 using NidusVision.Web.Ingest;
 using NidusVision.Web.Live;
 using NidusVision.Web.Settings;
@@ -15,10 +16,14 @@ builder.Services.AddDataProtection();
 builder.Services.AddSingleton<RtspProbe>();
 builder.Services.AddScoped<CameraService>();
 builder.Services.AddScoped<LiveStreamService>();
+builder.Services.AddScoped<SettingsService>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ReconnectBackoff>();
 builder.Services.AddSingleton<FfmpegSegmentProcess>();
+builder.Services.AddSingleton<CameraStatusTracker>();
+builder.Services.AddSignalR();
 builder.Services.AddHostedService<CameraIngestHostedService>();
+builder.Services.AddHealthChecks();
 
 var app = builder.Build();
 
@@ -35,6 +40,7 @@ app.MapAuthEndpoints();
 app.MapCameraEndpoints();
 app.MapSettingsEndpoints();
 app.MapLiveEndpoints();
+app.MapHub<CameraStatusHub>("/hubs/status");
 app.MapFallbackToFile("index.html").AllowAnonymous();
 
 app.Run();

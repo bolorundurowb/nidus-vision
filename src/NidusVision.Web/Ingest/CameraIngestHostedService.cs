@@ -15,6 +15,7 @@ public sealed class CameraIngestHostedService(
     IServiceScopeFactory scopes,
     FfmpegSegmentProcess ffmpeg,
     ReconnectBackoff backoff,
+    CameraStatusTracker statuses,
     ILogger<CameraIngestHostedService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -67,6 +68,7 @@ public sealed class CameraIngestHostedService(
                 using var process = ffmpeg.Start(url, camera.Transport.ToString(), dir);
                 camera.Status = CameraStatus.Recording;
                 await db.SaveChangesAsync(stoppingToken);
+                await statuses.SetAsync(camera.Id, CameraStatus.Recording, stoppingToken);
                 using var watcher = new FileSystemWatcher(dir, "*.mp4") { EnableRaisingEvents = true };
                 watcher.Created += async (_, args) =>
                 {
@@ -101,6 +103,7 @@ public sealed class CameraIngestHostedService(
                 await process.WaitForExitAsync(stoppingToken);
                 camera.Status = CameraStatus.Offline;
                 await db.SaveChangesAsync(stoppingToken);
+                await statuses.SetAsync(camera.Id, CameraStatus.Offline, stoppingToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
