@@ -32,6 +32,26 @@ public sealed class TimelineMergerTests
     }
 
     [Fact]
+    public void Merge_combines_same_kind_around_interleaved_other_kind()
+    {
+        var start = DateTimeOffset.Parse("2026-09-23T14:00:00Z");
+        var intervals = new TimeInterval[]
+        {
+            new(start, start.AddMinutes(20), false),
+            new(start.AddMinutes(5), start.AddMinutes(6), true),
+            new(start.AddMinutes(15), start.AddMinutes(30), false),
+        };
+        var merged = TimelineMerger.Merge(intervals);
+        merged.Must().HaveCount(2);
+        merged[0].Human.Must().BeFalse();
+        merged[0].Start.Must().Be(start);
+        merged[0].End.Must().Be(start.AddMinutes(30));
+        merged[1].Human.Must().BeTrue();
+        merged[1].Start.Must().Be(start.AddMinutes(5));
+        merged[1].End.Must().Be(start.AddMinutes(6));
+    }
+
+    [Fact]
     public void ToPercent_clamps_to_window()
     {
         var start = DateTimeOffset.Parse("2026-09-23T14:00:00Z");

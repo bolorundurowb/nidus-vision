@@ -9,7 +9,8 @@ public sealed record CameraWriteRequest(
     string? Username,
     string? Password,
     string Transport,
-    string? RoiJson);
+    string? RoiJson,
+    bool ClearCredentials = false);
 
 public sealed record CameraResponse(
     Guid Id,

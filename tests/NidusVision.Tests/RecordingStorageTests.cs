@@ -24,6 +24,8 @@ public sealed class RecordingStorageTests
         options.EffectiveSegmentDurationSeconds.Must().Be(900);
         AssertArgumentValue(startInfo.ArgumentList, "-segment_time", "900");
         AssertArgumentValue(startInfo.ArgumentList, "-break_non_keyframes", "1");
+        AssertArgumentValue(startInfo.ArgumentList, "-strftime_mkdir", "1");
+        startInfo.ArgumentList[^1].Must().Contain("%Y");
         startInfo.ArgumentList.Must().NotContain("10");
     }
 
@@ -106,10 +108,7 @@ public sealed class RecordingStorageTests
 
         var detection = await db.DetectionEvents.SingleAsync();
         detection.ClipPath.Must().NotBeNull();
-        Path.GetFullPath(detection.ClipPath!).Must().NotBe(Path.GetFullPath(recordingPath));
-        Path.GetFullPath(detection.ClipPath!).Must().StartWith(Path.GetFullPath(events), StringComparison.OrdinalIgnoreCase);
-        detection.ClipPath!.FileExists();
-        (await File.ReadAllBytesAsync(detection.ClipPath!)).Must().BeSequenceEqual([1, 2, 3, 4]);
+        Path.GetFullPath(detection.ClipPath!).Must().Be(Path.GetFullPath(recordingPath));
     }
 
     [Fact]

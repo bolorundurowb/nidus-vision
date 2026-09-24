@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NidusVision.Core.Retention;
+using NidusVision.Core.Storage;
 using NidusVision.Data;
 
 namespace NidusVision.Data;
@@ -31,7 +32,9 @@ public sealed class RetentionWorker(IServiceScopeFactory scopes, TimeProvider ti
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var settings = await db.AppSettings.AsNoTracking().OrderBy(s => s.Id).FirstAsync(cancellationToken);
         var segments = await db.RecordingSegments.AsNoTracking().ToListAsync(cancellationToken);
-        var infos = segments.Select(s => new SegmentRetentionInfo(s.Id, s.EndUtc, s.HasHuman, s.ByteSize, s.Path)).ToList();
+        var infos = segments
+            .Select(s => new SegmentRetentionInfo(s.Id, s.EndUtc, s.HasHuman, DiskFileSize.Of(s.Path, s.ByteSize), s.Path))
+            .ToList();
         var purge = RetentionPlanner.SelectPurge(
             infos,
             time.GetUtcNow(),

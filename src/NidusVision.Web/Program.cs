@@ -20,6 +20,8 @@ builder.Services.AddDataProtection();
 builder.Services.AddSingleton<RtspProbe>();
 builder.Services.AddScoped<CameraService>();
 builder.Services.AddScoped<LiveStreamService>();
+builder.Services.AddSingleton<ProcessCpuSampler>();
+builder.Services.AddSingleton<StorageMetricsCache>();
 builder.Services.AddScoped<SettingsService>();
 builder.Services.AddScoped<TimelineService>();
 builder.Services.AddScoped<EventLibraryService>();
