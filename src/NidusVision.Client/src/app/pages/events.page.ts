@@ -52,7 +52,7 @@ import { AppIcon } from '../ui/app-icon';
           <video controls [src]="'/api/events/' + event.id + '/clip.mp4'" (error)="playbackError.set('The event clip is unavailable.')"></video>
           <div class="player-bar">
             <strong>{{ event.cameraName }}</strong>
-            <span>{{ (event.confidence * 100) | number:'1.0-0' }}%</span>
+            <span>{{ event.startUtc | date:'medium' }}</span>
             <button type="button" class="btn outline sm" (click)="download(event)">
               <app-icon name="download" />Download
             </button>
@@ -77,7 +77,6 @@ import { AppIcon } from '../ui/app-icon';
                   <h3>Person detected · {{ event.cameraName }}</h3>
                   <p class="muted">{{ event.startUtc | date:'short' }}</p>
                 </div>
-                <span class="conf">{{ (event.confidence * 100) | number:'1.0-0' }}%</span>
               </div>
               <div class="foot"><span>Human detection</span><span>Download</span></div>
             </div>
@@ -134,7 +133,7 @@ import { AppIcon } from '../ui/app-icon';
                   <h3>{{ recording.cameraName }}</h3>
                   <p class="muted">{{ recording.startUtc | date:'short' }} – {{ recording.endUtc | date:'shortTime' }}</p>
                 </div>
-                <span class="conf">{{ recording.byteSize / 1048576 | number:'1.1-1' }} MB</span>
+                <span class="size">{{ recording.byteSize / 1048576 | number:'1.1-1' }} MB</span>
               </div>
               <div class="foot">
                 <span>{{ recording.hasHuman ? 'Human detected' : 'Continuous' }}</span>
@@ -163,12 +162,8 @@ import { AppIcon } from '../ui/app-icon';
   styles: `
     .filters { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.75rem; }
     .camera-filter { display: inline-flex; align-items: center; gap: 0.5rem; border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.35rem 0.7rem; font-size: 0.75rem; background: var(--card); }
-    .camera-filter select, .camera-filter input, .filter-panel select { border: 0; background: transparent; color: inherit; outline: 0; }
+    .camera-filter select, .camera-filter input { border: 0; background: transparent; color: inherit; outline: 0; }
     .camera-filter input[type=date] { font: inherit; color-scheme: inherit; }
-    .filters .btn.active { background: var(--muted); }
-    .filter-panel { display: flex; align-items: flex-end; gap: 1rem; padding: 0.75rem; }
-    .filter-panel label { display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.75rem; color: var(--muted-foreground); }
-    .filter-panel select { min-width: 10rem; border: 1px solid var(--border); border-radius: 0.4rem; padding: 0.4rem; color: var(--foreground); }
     .events { grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); }
     .thumb { aspect-ratio: 16/9; background: linear-gradient(#0f172a, #020617); position: relative; overflow: hidden; }
     .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -176,7 +171,7 @@ import { AppIcon } from '../ui/app-icon';
     .body { padding: 1rem; }
     h3 { margin: 0; font-size: 0.875rem; font-weight: 500; }
     .title-row { display: flex; justify-content: space-between; gap: 0.5rem; }
-    .conf { background: rgb(249 115 22 / 0.1); color: #ea580c; font-size: 10px; font-weight: 500; padding: 0.2rem 0.4rem; border-radius: 0.25rem; height: fit-content; }
+    .size { background: rgb(249 115 22 / 0.1); color: #ea580c; font-size: 10px; font-weight: 500; padding: 0.2rem 0.4rem; border-radius: 0.25rem; height: fit-content; white-space: nowrap; }
     .foot { display: flex; justify-content: space-between; border-top: 1px solid var(--border); margin-top: 0.75rem; padding-top: 0.5rem; font-size: 0.75rem; color: var(--muted-foreground); }
     .player { padding: 1rem; }
     video { width: 100%; border-radius: 0.5rem; background: #000; }
@@ -205,8 +200,6 @@ export class EventsPage {
   protected readonly cameraId = signal<string | null>(null);
   protected readonly kind = signal<'all' | 'event' | 'recording'>('all');
   protected readonly date = signal('');
-  protected readonly minConfidence = signal(0);
-  protected readonly filtersOpen = signal(false);
   protected readonly eventPage = signal(1);
   protected readonly eventTotal = signal(0);
   protected readonly eventTotalPages = signal(1);
@@ -228,7 +221,7 @@ export class EventsPage {
   }
 
   protected filtersActive(): boolean {
-    return this.kind() !== 'all' || this.date() !== '' || this.minConfidence() > 0 || this.cameraId() !== null;
+    return this.kind() !== 'all' || this.date() !== '' || this.cameraId() !== null;
   }
 
   protected setKind(kind: string): void {
@@ -249,17 +242,10 @@ export class EventsPage {
     void this.load();
   }
 
-  protected setMinConfidence(value: number): void {
-    this.minConfidence.set(value);
-    this.resetPages();
-    void this.load();
-  }
-
   protected clearFilters(): void {
     this.kind.set('all');
     this.date.set('');
     this.cameraId.set(null);
-    this.minConfidence.set(0);
     this.resetPages();
     void this.load();
   }
@@ -322,7 +308,6 @@ export class EventsPage {
     const eventsPromise = this.showEvents()
       ? this.api.search({
           cameraId: this.cameraId(),
-          minConfidence: this.minConfidence(),
           page: this.eventPage(),
           pageSize: this.pageSize,
           ...range,

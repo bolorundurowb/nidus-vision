@@ -8,7 +8,6 @@ export interface EventDto {
   cameraName: string;
   startUtc: string;
   endUtc: string;
-  confidence: number;
   hasThumbnail: boolean;
 }
 
@@ -35,7 +34,6 @@ export interface LibraryQuery {
   cameraId: string | null;
   page: number;
   pageSize: number;
-  minConfidence?: number;
   fromUtc?: string;
   toUtc?: string;
 }
@@ -63,9 +61,6 @@ function toParams(query: LibraryQuery): Record<string, string | number> {
     pageSize: query.pageSize,
   };
   if (query.cameraId) params['cameraId'] = query.cameraId;
-  if (query.minConfidence !== undefined && query.minConfidence > 0) {
-    params['minConfidence'] = query.minConfidence;
-  }
   if (query.fromUtc) params['fromUtc'] = query.fromUtc;
   if (query.toUtc) params['toUtc'] = query.toUtc;
   return params;

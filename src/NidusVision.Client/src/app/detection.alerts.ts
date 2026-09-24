@@ -4,7 +4,6 @@ import { HubConnectionBuilder } from '@microsoft/signalr';
 export interface DetectionToast {
   eventId: string;
   cameraName: string;
-  confidence: number;
   at: string;
 }
 

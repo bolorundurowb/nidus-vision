@@ -102,7 +102,7 @@
   <aside class="tray card">
     <h3>Notifications</h3>
     @for (item of alerts.items(); track item.eventId) {
-      <p><strong>{{ item.cameraName }}</strong> · {{ (item.confidence * 100).toFixed(0) }}%</p>
+      <p><strong>{{ item.cameraName }}</strong> · Person detected</p>
     }
     @if (alerts.items().length === 0) {
       <p class="muted">No human detections yet.</p>
