@@ -2,7 +2,6 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
 import { CameraApi, CameraWrite, cameraWrite } from './api/camera.api';
 import { CAMERA_SEED, CameraItem, CameraStatus } from './models';
-import { redactRtspUrl } from './rtsp-url';
 
 @Injectable({ providedIn: 'root' })
 export class CameraStore {
@@ -38,26 +37,14 @@ export class CameraStore {
     }
   }
 
-  async addCamera(name: string, url: string, username?: string, password?: string): Promise<void> {
+  async addCamera(name: string, url: string, username?: string, password?: string): Promise<boolean> {
     const body: CameraWrite = cameraWrite({ name, url, username, password });
     try {
       const created = await this.api.create(body);
       this.cameras.update(list => [...list, this.api.toItem(created)]);
+      return true;
     } catch {
-      this.cameras.update(list => [
-        ...list,
-        {
-          id: crypto.randomUUID(),
-          name: body.name,
-          status: 'offline',
-          resolution: null,
-          fps: null,
-          bitrate: null,
-          retention: null,
-          location: body.location,
-          mainRtspUrl: redactRtspUrl(body.mainRtspUrl),
-        },
-      ]);
+      return false;
     }
   }
 }

@@ -49,7 +49,11 @@ export class App {
   }
 
   protected async addCamera(name: string, url: string, username: string, password: string): Promise<void> {
-    await this.store.addCamera(name, url, username, password);
+    const ok = await this.store.addCamera(name, url, username, password);
+    if (!ok) {
+      this.probeResult.set({ ok: false, message: 'Could not save the camera. Check the server connection and try again.' });
+      return;
+    }
     this.addDialog.open.set(false);
     this.probeResult.set(null);
     void this.router.navigateByUrl('/cameras');

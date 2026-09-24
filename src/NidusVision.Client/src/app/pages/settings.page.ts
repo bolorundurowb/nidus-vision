@@ -54,12 +54,12 @@ import { SettingsApi } from '../api/settings.api';
         <section class="card pad">
           <h3>Storage allocation</h3>
           <p class="muted">{{ usedLabel() }}</p>
-          <div class="donut"><div><strong>{{ usedPct() }}%</strong><span class="muted">used</span></div></div>
+          <div class="donut" [style.background]="donutGradient()"><div><strong>{{ usedPct() }}%</strong><span class="muted">used</span></div></div>
           <ul>
-            <li><span>General video</span><strong>1.24 TB</strong></li>
-            <li><span>Human events</span><strong>414 GB</strong></li>
-            <li><span>System database</span><strong>96 GB</strong></li>
-            <li class="free"><span>Free space</span><strong>1.7 TB</strong></li>
+            <li><span>General video</span><strong>{{ generalVideo() }}</strong></li>
+            <li><span>Human events</span><strong>{{ humanEvents() }}</strong></li>
+            <li><span>System database</span><strong>{{ systemDatabase() }}</strong></li>
+            <li class="free"><span>Free space</span><strong>{{ freeSpace() }}</strong></li>
           </ul>
         </section>
       </div>
@@ -80,7 +80,7 @@ import { SettingsApi } from '../api/settings.api';
     .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-top: 1rem; }
     .stats div { border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.75rem; }
     .ok { color: #059669; font-size: 11px; }
-    .donut { width: 11rem; height: 11rem; margin: 1.25rem auto; border-radius: 999px; background: conic-gradient(#3b82f6 0 54%, #f97316 54% 72%, #94a3b8 72% 77%, var(--muted) 77% 100%); display: grid; place-items: center; }
+    .donut { width: 11rem; height: 11rem; margin: 1.25rem auto; border-radius: 999px; display: grid; place-items: center; }
     .donut > div { width: 8rem; height: 8rem; border-radius: 999px; background: var(--card); display: flex; flex-direction: column; align-items: center; justify-content: center; }
     ul { list-style: none; padding: 0; margin: 0; font-size: 0.75rem; }
     li { display: flex; justify-content: space-between; margin: 0.5rem 0; }
@@ -98,11 +98,16 @@ export class SettingsPage {
   private readonly sampleFps = signal(1);
   private readonly confidenceThreshold = signal(0.6);
   protected readonly version = signal('0.8.2');
-  protected readonly usedLabel = signal('2.3 TB of 4 TB used');
-  protected readonly usedPct = signal(57);
-  protected readonly cpu = signal('12%');
-  protected readonly memory = signal('2.4 / 8 GB');
-  protected readonly uptime = signal('45 days');
+  protected readonly usedLabel = signal('Storage metrics unavailable');
+  protected readonly usedPct = signal(0);
+  protected readonly cpu = signal('—');
+  protected readonly memory = signal('—');
+  protected readonly uptime = signal('—');
+  protected readonly generalVideo = signal('—');
+  protected readonly humanEvents = signal('—');
+  protected readonly systemDatabase = signal('—');
+  protected readonly freeSpace = signal('—');
+  protected readonly donutGradient = signal('conic-gradient(var(--muted) 0 100%)');
 
   constructor() {
     void this.load();
@@ -128,6 +133,20 @@ export class SettingsPage {
       if (metrics.storage.totalBytes > 0) {
         this.usedPct.set(Math.round((metrics.storage.usedBytes / metrics.storage.totalBytes) * 100));
         this.usedLabel.set(`${this.gb(metrics.storage.usedBytes)} of ${this.gb(metrics.storage.totalBytes)} used`);
+        const total = metrics.storage.totalBytes;
+        const g = (metrics.storage.generalBytes / total) * 100;
+        const d = (metrics.storage.detectionBytes / total) * 100;
+        const db = (metrics.storage.databaseBytes / total) * 100;
+        const gEnd = g;
+        const dEnd = g + d;
+        const dbEnd = dEnd + db;
+        this.donutGradient.set(
+          `conic-gradient(#3b82f6 0 ${gEnd}%, #f97316 ${gEnd}% ${dEnd}%, #94a3b8 ${dEnd}% ${dbEnd}%, var(--muted) ${dbEnd}% 100%)`,
+        );
+        this.generalVideo.set(this.gb(metrics.storage.generalBytes));
+        this.humanEvents.set(this.gb(metrics.storage.detectionBytes));
+        this.systemDatabase.set(this.gb(metrics.storage.databaseBytes));
+        this.freeSpace.set(this.gb(Math.max(0, total - metrics.storage.usedBytes)));
       }
     } catch {
       /* mock */

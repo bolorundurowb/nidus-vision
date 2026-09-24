@@ -72,7 +72,12 @@ import { AppIcon } from '../ui/app-icon';
       <div class="grid events">
         @for (event of events(); track event.id) {
           <article class="card event" (click)="selectEvent(event)">
-            <div class="thumb"><span>{{ event.startUtc | date:'HH:mm:ss' }}</span></div>
+            <div class="thumb">
+              @if (event.hasThumbnail) {
+                <img [src]="'/api/events/' + event.id + '/thumbnail'" alt="">
+              }
+              <span>{{ event.startUtc | date:'HH:mm:ss' }}</span>
+            </div>
             <div class="body">
               <div class="title-row">
                 <div>
@@ -171,7 +176,8 @@ import { AppIcon } from '../ui/app-icon';
     .filter-panel label { display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.75rem; color: var(--muted-foreground); }
     .filter-panel select { min-width: 10rem; border: 1px solid var(--border); border-radius: 0.4rem; padding: 0.4rem; color: var(--foreground); }
     .events { grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); }
-    .thumb { aspect-ratio: 16/9; background: linear-gradient(#0f172a, #020617); position: relative; }
+    .thumb { aspect-ratio: 16/9; background: linear-gradient(#0f172a, #020617); position: relative; overflow: hidden; }
+    .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .thumb span { position: absolute; left: 0.75rem; bottom: 0.75rem; background: rgb(0 0 0 / 0.5); color: #fff; font-size: 11px; padding: 0.2rem 0.4rem; border-radius: 0.25rem; }
     .body { padding: 1rem; }
     h3 { margin: 0; font-size: 0.875rem; font-weight: 500; }

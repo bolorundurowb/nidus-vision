@@ -9,7 +9,7 @@ export interface EventDto {
   startUtc: string;
   endUtc: string;
   confidence: number;
-  thumbnailPath: string | null;
+  hasThumbnail: boolean;
 }
 
 export interface RecordingDto {
