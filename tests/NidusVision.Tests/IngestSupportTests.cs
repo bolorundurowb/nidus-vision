@@ -39,11 +39,24 @@ public sealed class IngestSupportTests
     [Fact]
     public void RecordingPathParsesStrftimeFilename()
     {
+        // Arrange
+        var path = Path.Combine("rec", "cam", "2026", "09", "23", "20260923T183000.mp4");
+
         // Act
-        var parsed = RecordingPath.TryParseStart(@"C:\rec\cam\2026\09\23\20260923T183000.mp4", out var start);
+        var parsed = RecordingPath.TryParseStart(path, out var start);
 
         // Assert
         parsed.Must().BeTrue();
         start.Must().Be(new DateTimeOffset(2026, 9, 23, 18, 30, 0, TimeSpan.Zero));
+    }
+
+    [Fact]
+    public void RecordingPathRejectsFilenamesThatAreNotTimestamps()
+    {
+        // Act
+        var parsed = RecordingPath.TryParseStart(Path.Combine("rec", "cam", "segment.mp4"), out _);
+
+        // Assert
+        parsed.Must().BeFalse();
     }
 }
