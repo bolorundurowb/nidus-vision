@@ -21,7 +21,6 @@ public sealed class EventLibraryService(AppDbContext db, IOptions<StorageOptions
 
     public async Task<PagedResponse<EventResponse>> SearchAsync(
         Guid? cameraId,
-        float minConfidence,
         int page,
         int pageSize,
         DateTimeOffset? fromUtc,
@@ -29,10 +28,9 @@ public sealed class EventLibraryService(AppDbContext db, IOptions<StorageOptions
         CancellationToken cancellationToken)
     {
         (page, pageSize) = NormalizePage(page, pageSize);
-        minConfidence = Math.Clamp(minConfidence, 0, 1);
         var query = db.DetectionEvents
             .AsNoTracking()
-            .Where(e => (cameraId == null || e.CameraId == cameraId) && e.Confidence >= minConfidence);
+            .Where(e => cameraId == null || e.CameraId == cameraId);
         if (fromUtc is { } from)
         {
             query = query.Where(e => e.EndUtc >= from);
@@ -278,8 +276,8 @@ internal static class EventEndpoints
     public static void MapEventEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/events");
-        group.MapGet("/", async (Guid? cameraId, float? minConfidence, DateTimeOffset? fromUtc, DateTimeOffset? toUtc, int? page, int? pageSize, EventLibraryService events, CancellationToken cancellationToken) =>
-            TypedResults.Ok(await events.SearchAsync(cameraId, minConfidence ?? 0, page ?? 1, pageSize ?? 12, fromUtc, toUtc, cancellationToken)));
+        group.MapGet("/", async (Guid? cameraId, DateTimeOffset? fromUtc, DateTimeOffset? toUtc, int? page, int? pageSize, EventLibraryService events, CancellationToken cancellationToken) =>
+            TypedResults.Ok(await events.SearchAsync(cameraId, page ?? 1, pageSize ?? 12, fromUtc, toUtc, cancellationToken)));
         group.MapGet("/{id:guid}", async (Guid id, EventLibraryService events, CancellationToken cancellationToken) =>
         {
             var item = await events.GetAsync(id, cancellationToken);

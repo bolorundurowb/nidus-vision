@@ -34,18 +34,17 @@ public sealed class EventLibraryPaginationTests : IDisposable
 
         var result = await CreateService(db).SearchAsync(
             front.Id,
-            0.7f,
             page: 2,
             pageSize: 2,
             fromUtc: null,
             toUtc: null,
             CancellationToken.None);
 
-        result.TotalCount.Must().Be(3);
+        result.TotalCount.Must().Be(4);
         result.TotalPages.Must().Be(2);
         result.Page.Must().Be(2);
-        result.Items.Must().HaveCount(1);
-        result.Items[0].Confidence.Must().Be(0.7f);
+        result.Items.Select(item => item.StartUtc).Must().BeSequenceEqual(
+            [start.AddMinutes(2), start.AddMinutes(1)]);
     }
 
     [Fact]
@@ -96,7 +95,6 @@ public sealed class EventLibraryPaginationTests : IDisposable
 
         var events = await CreateService(db).SearchAsync(
             camera.Id,
-            0,
             page: 1,
             pageSize: 12,
             fromUtc: day,
