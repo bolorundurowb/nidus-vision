@@ -5,7 +5,7 @@ namespace NidusVision.Tests;
 public sealed class RetentionPlannerTests
 {
     [Fact]
-    public void Time_only_deletes_expired_segments()
+    public void TimeOnlyDeletesExpiredSegments()
     {
         var now = DateTimeOffset.Parse("2026-09-23T00:00:00Z");
         var unmarked = new SegmentRetentionInfo(Guid.CreateVersion7(), now.AddDays(-10), false, 10, "a.mp4");
@@ -18,7 +18,7 @@ public sealed class RetentionPlannerTests
     }
 
     [Fact]
-    public void Storage_only_deletes_oldest_segments_until_under_cap()
+    public void StorageOnlyDeletesOldestSegmentsUntilUnderCap()
     {
         var now = DateTimeOffset.Parse("2026-09-23T00:00:00Z");
         var old = new SegmentRetentionInfo(Guid.CreateVersion7(), now.AddHours(-2), false, 80, "old.mp4");
@@ -36,7 +36,7 @@ public sealed class RetentionPlannerTests
     }
 
     [Fact]
-    public void Combined_policy_applies_time_and_storage_limits()
+    public void CombinedPolicyAppliesTimeAndStorageLimits()
     {
         var now = DateTimeOffset.Parse("2026-09-23T00:00:00Z");
         var expired = new SegmentRetentionInfo(Guid.CreateVersion7(), now.AddDays(-10), false, 80, "expired.mp4");
@@ -54,7 +54,7 @@ public sealed class RetentionPlannerTests
     }
 
     [Fact]
-    public void Under_storage_cap_does_not_delete_unexpired_segments()
+    public void UnderStorageCapDoesNotDeleteUnexpiredSegments()
     {
         var now = DateTimeOffset.Parse("2026-09-23T00:00:00Z");
         var old = new SegmentRetentionInfo(Guid.CreateVersion7(), now.AddHours(-2), false, 40, "old.mp4");

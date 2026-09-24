@@ -94,8 +94,15 @@ interface RoiPoint {
                 <input class="input" type="password" autocomplete="new-password" [value]="password()" (input)="password.set($any($event.target).value)">
               </label>
             </div>
+            @if (cam.hasCredentials && !removeCredentials()) {
+              <button type="button" class="btn outline sm" (click)="clearStoredCredentials()">
+                Remove stored credentials
+              </button>
+            }
             @if (probeResult(); as result) {
               <p class="hint" [class.ok]="result.ok" [class.error]="!result.ok">{{ result.message }}</p>
+            } @else if (removeCredentials()) {
+              <p class="hint">Stored username and password will be removed on save.</p>
             } @else {
               <p class="hint">
                 {{ cam.hasCredentials ? 'Credentials are stored. Leave blank to keep them.' : 'This camera has no stored credentials yet.' }}
@@ -170,6 +177,7 @@ export class CamerasPage {
   protected readonly password = signal('');
   protected readonly probing = signal(false);
   protected readonly probeResult = signal<ProbeResult | null>(null);
+  protected readonly removeCredentials = signal(false);
   protected readonly statLabel = statLabel;
   protected readonly fpsLabel = fpsLabel;
 
@@ -182,8 +190,15 @@ export class CamerasPage {
     this.username.set('');
     this.password.set('');
     this.probeResult.set(null);
+    this.removeCredentials.set(false);
     this.roiPoints.set(camera ? parseRoi(camera.roiJson) : []);
     this.editing.set(camera ? { ...camera } : null);
+  }
+
+  protected clearStoredCredentials(): void {
+    this.username.set('');
+    this.password.set('');
+    this.removeCredentials.set(true);
   }
 
   protected close(): void {
@@ -249,6 +264,7 @@ export class CamerasPage {
       username: this.username(),
       password: this.password(),
       roiJson: camera.roiJson ?? null,
+      clearCredentials: this.removeCredentials(),
     });
   }
 }

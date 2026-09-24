@@ -4,6 +4,7 @@ using NidusVision.Core.Cameras;
 using NidusVision.Core.Contracts;
 using NidusVision.Core.Models;
 using NidusVision.Core.Security;
+using NidusVision.Core.Storage;
 using NidusVision.Data;
 using NidusVision.Streaming;
 
@@ -116,18 +117,26 @@ public sealed class CameraService(AppDbContext db, IDataProtectionProvider prote
             ? null
             : RtspUrlCredentials.Split(request.SubRtspUrl).UrlWithoutCredentials;
 
-        var username = RtspUrlCredentials.MeaningfulUserInfo(main.Username)
-            ?? RtspUrlCredentials.MeaningfulUserInfo(request.Username);
-        var password = RtspUrlCredentials.MeaningfulUserInfo(main.Password)
-            ?? RtspUrlCredentials.MeaningfulUserInfo(request.Password);
-        if (username is not null)
+        if (request.ClearCredentials)
         {
-            camera.Username = username;
+            camera.Username = null;
+            camera.PasswordProtected = null;
         }
-
-        if (password is not null)
+        else
         {
-            camera.PasswordProtected = _protector.Protect(password);
+            var username = RtspUrlCredentials.MeaningfulUserInfo(main.Username)
+                ?? RtspUrlCredentials.MeaningfulUserInfo(request.Username);
+            var password = RtspUrlCredentials.MeaningfulUserInfo(main.Password)
+                ?? RtspUrlCredentials.MeaningfulUserInfo(request.Password);
+            if (username is not null)
+            {
+                camera.Username = username;
+            }
+
+            if (password is not null)
+            {
+                camera.PasswordProtected = _protector.Protect(password);
+            }
         }
 
         camera.Transport = request.Transport.Equals("udp", StringComparison.OrdinalIgnoreCase)
@@ -137,7 +146,7 @@ public sealed class CameraService(AppDbContext db, IDataProtectionProvider prote
         return camera;
     }
 
-    public async Task<Dictionary<Guid, CameraStatsSnapshot>> LoadStatsAsync(
+    private async Task<Dictionary<Guid, CameraStatsSnapshot>> LoadStatsAsync(
         IReadOnlyList<Guid> cameraIds,
         CancellationToken cancellationToken)
     {
@@ -183,18 +192,7 @@ public sealed class CameraService(AppDbContext db, IDataProtectionProvider prote
     }
 
     /// <summary>The newest segment is still being written, so its indexed size is stale.</summary>
-    private static long SegmentBytes(string path, long indexedBytes)
-    {
-        try
-        {
-            var info = new FileInfo(path);
-            return info.Exists ? info.Length : indexedBytes;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
-        {
-            return indexedBytes;
-        }
-    }
+    private static long SegmentBytes(string path, long indexedBytes) => DiskFileSize.Of(path, indexedBytes);
 
     private CameraResponse ToResponse(Camera camera, CameraStatsSnapshot stats)
     {

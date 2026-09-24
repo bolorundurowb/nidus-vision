@@ -36,6 +36,15 @@ public static class DataServiceCollectionExtensions
         if (!await db.AppSettings.AnyAsync(cancellationToken))
         {
             db.AppSettings.Add(new AppSettings());
+        }
+
+        foreach (var camera in await db.Cameras.Where(c => c.Status != CameraStatus.Offline).ToListAsync(cancellationToken))
+        {
+            camera.Status = CameraStatus.Offline;
+        }
+
+        if (db.ChangeTracker.HasChanges())
+        {
             await db.SaveChangesAsync(cancellationToken);
         }
     }

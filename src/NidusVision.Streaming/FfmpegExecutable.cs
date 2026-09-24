@@ -32,6 +32,7 @@ public static class FfmpegExecutable
         try
         {
             process.Start();
+            FfmpegProcessGroup.Track(process);
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or FileNotFoundException)
         {

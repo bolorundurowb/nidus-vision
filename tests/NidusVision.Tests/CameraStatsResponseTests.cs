@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using NidusVision.Core.Models;
 using NidusVision.Data;
@@ -8,19 +7,14 @@ using NidusVision.Web.Cameras;
 
 namespace NidusVision.Tests;
 
-public sealed class CameraStatsResponseTests : IDisposable
+public sealed class CameraStatsResponseTests : SqliteTestBase
 {
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-09-23T12:00:00Z");
 
-    private readonly SqliteConnection _connection = new("Data Source=:memory:");
-
-    public CameraStatsResponseTests() => _connection.Open();
-
-    public void Dispose() => _connection.Dispose();
-
     [Fact]
-    public async Task Camera_list_reports_resolution_framerate_bitrate_and_retention()
+    public async Task ListAsyncWithRecordingMetadataReturnsCalculatedCameraStatistics()
     {
+        // Arrange
         await using var db = CreateContext();
         var camera = AddCamera(db, "1920×1080", 25);
         db.RecordingSegments.AddRange(
@@ -28,10 +22,12 @@ public sealed class CameraStatsResponseTests : IDisposable
             NewSegment(camera.Id, Now.AddMinutes(-40), TimeSpan.FromMinutes(30), 720_000_000));
         await db.SaveChangesAsync(CancellationToken.None);
 
+        // Act
         var cameras = await CreateService(db).ListAsync(CancellationToken.None);
-        cameras.Must().HaveCount(1);
         var response = cameras[0];
 
+        // Assert
+        cameras.Must().HaveCount(1);
         response.Resolution.Must().Be("1920×1080");
         response.Fps.Must().Be(25);
         response.Bitrate.Must().Be("3.2 Mbps");
@@ -39,16 +35,19 @@ public sealed class CameraStatsResponseTests : IDisposable
     }
 
     [Fact]
-    public async Task Camera_without_recordings_reports_unknown_bitrate_and_retention()
+    public async Task ListAsyncWithoutRecordingsReturnsUnknownBitrateAndRetention()
     {
+        // Arrange
         await using var db = CreateContext();
         AddCamera(db, resolution: null, fps: null);
         await db.SaveChangesAsync(CancellationToken.None);
 
+        // Act
         var cameras = await CreateService(db).ListAsync(CancellationToken.None);
-        cameras.Must().HaveCount(1);
         var response = cameras[0];
 
+        // Assert
+        cameras.Must().HaveCount(1);
         response.Resolution.VerifyNullable().BeNull();
         response.Fps.VerifyNullable().BeNull();
         response.Bitrate.VerifyNullable().BeNull();
@@ -56,10 +55,11 @@ public sealed class CameraStatsResponseTests : IDisposable
     }
 
     [Fact]
-    public async Task Bitrate_measures_the_segment_on_disk_while_it_is_still_being_written()
+    public async Task ListAsyncWithGrowingSegmentUsesCurrentFileSizeForBitrate()
     {
-        var path = Path.Combine(Path.GetTempPath(), "nidus-tests", $"{Guid.NewGuid():N}.mp4");
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        // Arrange
+        using var directory = new TestDirectory();
+        var path = directory.GetPath("segment.mp4");
         await File.WriteAllBytesAsync(path, new byte[1_000_000]);
         await using var db = CreateContext();
         var camera = AddCamera(db, "1920×1080", 25);
@@ -69,23 +69,16 @@ public sealed class CameraStatsResponseTests : IDisposable
         db.RecordingSegments.Add(segment);
         await db.SaveChangesAsync(CancellationToken.None);
 
+        // Act
         var cameras = await CreateService(db).ListAsync(CancellationToken.None);
-        cameras.Must().HaveCount(1);
 
+        // Assert
+        cameras.Must().HaveCount(1);
         cameras[0].Bitrate.Must().Be("133 kbps");
-        File.Delete(path);
     }
 
     private CameraService CreateService(AppDbContext db) =>
         new(db, new EphemeralDataProtectionProvider(), new RtspProbe(), new FixedTimeProvider(Now));
-
-    private AppDbContext CreateContext()
-    {
-        var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlite(_connection).Options;
-        var db = new AppDbContext(options);
-        db.Database.EnsureCreated();
-        return db;
-    }
 
     private static Camera AddCamera(AppDbContext db, string? resolution, int? fps)
     {

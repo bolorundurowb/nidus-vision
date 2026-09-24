@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -7,6 +8,7 @@ using NidusVision.Core.Models;
 using NidusVision.Data;
 using NidusVision.Inference;
 using NidusVision.Web.Events;
+using NidusVision.Web.Hubs;
 
 namespace NidusVision.Web.Inference;
 
@@ -14,6 +16,7 @@ public sealed class DetectionHostedService(
     IServiceScopeFactory scopes,
     HumanDetector detector,
     EventArtifactStore eventArtifacts,
+    IHubContext<DetectionHub> alerts,
     ILogger<DetectionHostedService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -41,7 +44,8 @@ public sealed class DetectionHostedService(
     }
 
     public async Task PersistDetectionAsync(AppDbContext db, Guid cameraId, float confidence, DateTimeOffset start, DateTimeOffset end, CancellationToken cancellationToken)
-        => await PersistDetectionWithArtifactsAsync(
+    {
+        var detection = await PersistDetectionWithArtifactsAsync(
             db,
             eventArtifacts,
             cameraId,
@@ -49,8 +53,17 @@ public sealed class DetectionHostedService(
             start,
             end,
             cancellationToken);
+        var cameraName = await db.Cameras.AsNoTracking()
+            .Where(c => c.Id == cameraId)
+            .Select(c => c.Name)
+            .FirstOrDefaultAsync(cancellationToken) ?? "Camera";
+        await alerts.Clients.All.SendAsync(
+            "alert",
+            new DetectionAlert(detection.Id, cameraId, cameraName, confidence, start),
+            cancellationToken);
+    }
 
-    public static async Task PersistDetectionWithArtifactsAsync(
+    public static async Task<DetectionEvent> PersistDetectionWithArtifactsAsync(
         AppDbContext db,
         EventArtifactStore eventArtifacts,
         Guid cameraId,
@@ -79,12 +92,13 @@ public sealed class DetectionHostedService(
         }
 
         detection.SegmentIdsJson = System.Text.Json.JsonSerializer.Serialize(overlapping.Select(s => s.Id));
-        var source = overlapping.Select(s => s.Path).FirstOrDefault(File.Exists);
+        var source = overlapping.FirstOrDefault(s => File.Exists(s.Path));
         if (source is not null)
         {
-            detection.ClipPath = await eventArtifacts.SaveClipAsync(detection, source, cancellationToken);
+            detection.ClipPath = await eventArtifacts.SaveClipAsync(detection, source.Path, source.StartUtc, cancellationToken);
         }
 
         await db.SaveChangesAsync(cancellationToken);
+        return detection;
     }
 }

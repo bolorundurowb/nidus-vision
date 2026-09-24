@@ -46,6 +46,7 @@ public sealed class RecordingSegment
     public string Codec { get; set; } = "h264";
     public bool HasHuman { get; set; }
     public long ByteSize { get; set; }
+    public string? ThumbnailPath { get; set; }
 }
 
 public sealed class DetectionEvent

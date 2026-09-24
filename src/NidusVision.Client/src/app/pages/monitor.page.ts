@@ -1,8 +1,20 @@
 import { Component, inject, signal } from '@angular/core';
+import { CameraApi, TimelineRowDto } from '../api/camera.api';
 import { CameraStore } from '../camera.store';
-import { StatusPill } from '../ui/status-pill';
 import { LiveTile } from '../ui/live-tile';
 import { AppIcon, AppIconName } from '../ui/app-icon';
+
+interface TimelineBar {
+  left: number;
+  width: number;
+}
+
+interface TimelineView {
+  cameraId: string;
+  cameraName: string;
+  continuous: TimelineBar[];
+  hits: TimelineBar[];
+}
 
 @Component({
   selector: 'app-monitor-page',
@@ -47,12 +59,19 @@ import { AppIcon, AppIconName } from '../ui/app-icon';
           </div>
           <div class="legend"><span><i class="swatch sky"></i>Continuous</span><span><i class="swatch orange"></i>Human detected</span></div>
         </div>
-        @for (camera of store.cameras().slice(0, 3); track camera.id; let i = $index) {
+        @if (timeline().length === 0) {
+          <p class="muted empty">No recordings in the last 24 hours.</p>
+        }
+        @for (row of timeline(); track row.cameraId) {
           <div class="row">
-            <span>{{ camera.name }}</span>
+            <span>{{ row.cameraName }}</span>
             <div class="track">
-              <div class="cont"></div>
-              <div class="hit" [style.left]="i === 0 ? '26%' : i === 1 ? '58%' : '12%'" [style.width]="i === 0 ? '9%' : i === 1 ? '13%' : '5%'"></div>
+              @for (bar of row.continuous; track $index) {
+                <div class="cont" [style.left.%]="bar.left" [style.width.%]="bar.width"></div>
+              }
+              @for (bar of row.hits; track $index) {
+                <div class="hit" [style.left.%]="bar.left" [style.width.%]="bar.width"></div>
+              }
             </div>
           </div>
         }
@@ -87,7 +106,8 @@ import { AppIcon, AppIconName } from '../ui/app-icon';
     .row { margin-top: 0.75rem; display: flex; align-items: center; gap: 0.75rem; }
     .row > span { width: 5rem; font-size: 0.75rem; color: var(--muted-foreground); overflow: hidden; text-overflow: ellipsis; }
     .track { position: relative; height: 1.75rem; flex: 1; border-radius: 0.35rem; overflow: hidden; background: var(--muted); }
-    .cont { position: absolute; inset: 0; background: rgb(56 189 248 / 0.3); }
+    .cont { position: absolute; top: 0; bottom: 0; background: rgb(56 189 248 / 0.3); }
+    .empty { margin: 0.75rem 0 0; font-size: 0.75rem; }
     .hit { position: absolute; top: 0.25rem; bottom: 0.25rem; background: var(--orange); border-radius: 0.25rem; }
     .swatch { display: inline-block; width: 1.25rem; height: 0.5rem; border-radius: 2px; margin-right: 0.35rem; }
     .swatch.sky { background: rgb(56 189 248 / 0.6); }
@@ -97,10 +117,16 @@ import { AppIcon, AppIconName } from '../ui/app-icon';
 })
 export class MonitorPage {
   protected readonly store = inject(CameraStore);
+  private readonly cameras = inject(CameraApi);
   protected readonly grid = signal(2);
   protected readonly refreshing = signal(false);
   protected readonly refreshResult = signal<'ok' | 'error' | null>(null);
+  protected readonly timeline = signal<TimelineView[]>([]);
   private resultTimer?: ReturnType<typeof setTimeout>;
+
+  constructor() {
+    void this.loadTimeline();
+  }
 
   protected refreshLabel(): string {
     if (this.refreshing()) {
@@ -132,10 +158,44 @@ export class MonitorPage {
     this.refreshing.set(true);
     try {
       const ok = await this.store.refresh();
+      await this.loadTimeline();
       this.refreshResult.set(ok ? 'ok' : 'error');
     } finally {
       this.refreshing.set(false);
       this.resultTimer = setTimeout(() => this.refreshResult.set(null), 3000);
     }
+  }
+
+  private async loadTimeline(): Promise<void> {
+    const to = new Date();
+    const from = new Date(to.getTime() - 24 * 60 * 60 * 1000);
+    try {
+      const rows = await this.cameras.timeline(from.toISOString(), to.toISOString());
+      this.timeline.set(rows.map(row => this.toView(row, from, to)));
+    } catch {
+      this.timeline.set([]);
+    }
+  }
+
+  private toView(row: TimelineRowDto, from: Date, to: Date): TimelineView {
+    const windowMs = to.getTime() - from.getTime();
+    const bar = (start: string, end: string): TimelineBar => {
+      const left = this.toPercent(new Date(start), from, windowMs);
+      const right = this.toPercent(new Date(end), from, windowMs);
+      return { left, width: Math.max(0.4, right - left) };
+    };
+    return {
+      cameraId: row.cameraId,
+      cameraName: row.cameraName,
+      continuous: row.intervals.filter(i => !i.human).map(i => bar(i.start, i.end)),
+      hits: row.intervals.filter(i => i.human).map(i => bar(i.start, i.end)),
+    };
+  }
+
+  private toPercent(value: Date, windowStart: Date, windowMs: number): number {
+    if (windowMs <= 0) {
+      return 0;
+    }
+    return Math.min(100, Math.max(0, ((value.getTime() - windowStart.getTime()) / windowMs) * 100));
   }
 }

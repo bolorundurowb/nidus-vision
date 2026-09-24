@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NidusVision.Core.Retention;
+using NidusVision.Core.Storage;
 using NidusVision.Data;
 
 namespace NidusVision.Data;
@@ -25,13 +26,15 @@ public sealed class RetentionWorker(IServiceScopeFactory scopes, TimeProvider ti
         }
     }
 
-    internal async Task RunOnceAsync(CancellationToken cancellationToken)
+    public async Task RunOnceAsync(CancellationToken cancellationToken)
     {
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var settings = await db.AppSettings.AsNoTracking().OrderBy(s => s.Id).FirstAsync(cancellationToken);
         var segments = await db.RecordingSegments.AsNoTracking().ToListAsync(cancellationToken);
-        var infos = segments.Select(s => new SegmentRetentionInfo(s.Id, s.EndUtc, s.HasHuman, s.ByteSize, s.Path)).ToList();
+        var infos = segments
+            .Select(s => new SegmentRetentionInfo(s.Id, s.EndUtc, s.HasHuman, DiskFileSize.Of(s.Path, s.ByteSize), s.Path))
+            .ToList();
         var purge = RetentionPlanner.SelectPurge(
             infos,
             time.GetUtcNow(),
@@ -41,12 +44,15 @@ public sealed class RetentionWorker(IServiceScopeFactory scopes, TimeProvider ti
 
         foreach (var item in purge)
         {
+            var entity = await db.RecordingSegments.FindAsync([item.Id], cancellationToken);
             if (File.Exists(item.Path))
             {
                 File.Delete(item.Path);
             }
 
-            var entity = await db.RecordingSegments.FindAsync([item.Id], cancellationToken);
+            DeleteIfExists(RecordingPath.ThumbnailFor(item.Path));
+            DeleteIfExists(entity?.ThumbnailPath);
+
             if (entity is not null)
             {
                 db.RecordingSegments.Remove(entity);

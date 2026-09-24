@@ -32,6 +32,7 @@ export interface CameraWrite {
   password: string | null;
   transport: string;
   roiJson: string | null;
+  clearCredentials?: boolean;
 }
 
 export interface ProbeResult {
@@ -39,6 +40,18 @@ export interface ProbeResult {
   message: string;
   resolution?: string | null;
   fps?: number | null;
+}
+
+export interface TimelineIntervalDto {
+  start: string;
+  end: string;
+  human: boolean;
+}
+
+export interface TimelineRowDto {
+  cameraId: string;
+  cameraName: string;
+  intervals: TimelineIntervalDto[];
 }
 
 /** Builds a write payload; blank credentials mean "leave whatever is already stored". */
@@ -49,6 +62,7 @@ export function cameraWrite(input: {
   username?: string | null;
   password?: string | null;
   roiJson?: string | null;
+  clearCredentials?: boolean;
 }): CameraWrite {
   return {
     name: input.name.trim() || 'New Camera',
@@ -60,6 +74,7 @@ export function cameraWrite(input: {
     password: blankToNull(input.password),
     transport: 'tcp',
     roiJson: input.roiJson ?? null,
+    clearCredentials: input.clearCredentials ?? false,
   };
 }
 
@@ -90,6 +105,10 @@ export class CameraApi {
 
   probe(body: CameraWrite) {
     return firstValueFrom(this.http.post<ProbeResult>('/api/cameras/probe', body));
+  }
+
+  timeline(from: string, to: string) {
+    return firstValueFrom(this.http.get<TimelineRowDto[]>('/api/cameras/timeline', { params: { from, to } }));
   }
 
   toItem(dto: CameraDto): CameraItem {

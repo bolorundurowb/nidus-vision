@@ -1,21 +1,15 @@
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using NidusVision.Core.Models;
 using NidusVision.Data;
 
 namespace NidusVision.Tests;
 
-public sealed class TimestampQueryTests : IDisposable
+public sealed class TimestampQueryTests : SqliteTestBase
 {
-    private readonly SqliteConnection _connection = new("Data Source=:memory:");
-
-    public TimestampQueryTests() => _connection.Open();
-
-    public void Dispose() => _connection.Dispose();
-
     [Fact]
-    public async Task Orders_and_filters_segments_by_timestamp_in_sql()
+    public async Task QueryWithTimestampFilterOrdersAndFiltersInSql()
     {
+        // Arrange
         await using var db = CreateContext();
         var camera = AddCamera(db);
         var now = DateTimeOffset.Parse("2026-09-23T12:00:00Z");
@@ -24,18 +18,21 @@ public sealed class TimestampQueryTests : IDisposable
             NewSegment(camera.Id, now.AddMinutes(-10), now));
         await db.SaveChangesAsync(CancellationToken.None);
 
+        // Act
         var ordered = await db.RecordingSegments.AsNoTracking()
             .Where(s => s.StartUtc >= now.AddMinutes(-15))
             .OrderByDescending(s => s.StartUtc)
             .ToListAsync(CancellationToken.None);
 
+        // Assert
         ordered.Must().HaveCount(1);
         ordered[0].StartUtc.Must().Be(now.AddMinutes(-10));
     }
 
     [Fact]
-    public async Task Round_trips_timestamps_as_utc()
+    public async Task SaveChangesAsyncWithOffsetTimestampRoundTripsAsUtc()
     {
+        // Arrange
         await using var db = CreateContext();
         var camera = AddCamera(db);
         var start = DateTimeOffset.Parse("2026-09-23T12:00:00+02:00");
@@ -48,20 +45,14 @@ public sealed class TimestampQueryTests : IDisposable
         });
         await db.SaveChangesAsync(CancellationToken.None);
 
+        // Act
         var stored = await db.DetectionEvents.AsNoTracking()
             .OrderBy(e => e.StartUtc)
             .FirstAsync(CancellationToken.None);
 
+        // Assert
         stored.StartUtc.Offset.Must().Be(TimeSpan.Zero);
         stored.StartUtc.UtcDateTime.Must().Be(start.UtcDateTime);
-    }
-
-    private AppDbContext CreateContext()
-    {
-        var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlite(_connection).Options;
-        var db = new AppDbContext(options);
-        db.Database.EnsureCreated();
-        return db;
     }
 
     private static Camera AddCamera(AppDbContext db)

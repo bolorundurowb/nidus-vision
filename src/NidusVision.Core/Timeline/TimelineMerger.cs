@@ -6,6 +6,14 @@ public static class TimelineMerger
 {
     public static IReadOnlyList<TimeInterval> Merge(IEnumerable<TimeInterval> intervals)
     {
+        var merged = new List<TimeInterval>();
+        merged.AddRange(MergeKind(intervals.Where(i => !i.Human)));
+        merged.AddRange(MergeKind(intervals.Where(i => i.Human)));
+        return [.. merged.OrderBy(i => i.Start).ThenBy(i => i.End).ThenBy(i => i.Human)];
+    }
+
+    private static List<TimeInterval> MergeKind(IEnumerable<TimeInterval> intervals)
+    {
         var ordered = intervals
             .Where(i => i.End > i.Start)
             .OrderBy(i => i.Start)
@@ -20,7 +28,7 @@ public static class TimelineMerger
         foreach (var next in ordered.AsSpan(1))
         {
             var last = merged[^1];
-            if (next.Start <= last.End && next.Human == last.Human)
+            if (next.Start <= last.End)
             {
                 merged[^1] = last with { End = next.End > last.End ? next.End : last.End };
             }

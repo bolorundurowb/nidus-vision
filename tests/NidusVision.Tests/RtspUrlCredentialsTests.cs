@@ -5,7 +5,7 @@ namespace NidusVision.Tests;
 public sealed class RtspUrlCredentialsTests
 {
     [Fact]
-    public void Split_strips_user_and_password_from_url()
+    public void SplitStripsUserAndPasswordFromUrl()
     {
         var parts = RtspUrlCredentials.Split("rtsp://admin:secret@192.168.1.20:554/stream");
         parts.UrlWithoutCredentials.Must().Be("rtsp://192.168.1.20:554/stream");
@@ -14,7 +14,7 @@ public sealed class RtspUrlCredentialsTests
     }
 
     [Fact]
-    public void Split_keeps_urls_without_userinfo()
+    public void SplitKeepsUrlsWithoutUserinfo()
     {
         var parts = RtspUrlCredentials.Split("rtsp://192.168.1.20:554/stream");
         parts.UrlWithoutCredentials.Must().Be("rtsp://192.168.1.20:554/stream");
@@ -23,7 +23,7 @@ public sealed class RtspUrlCredentialsTests
     }
 
     [Fact]
-    public void Redact_hides_embedded_credentials()
+    public void RedactHidesEmbeddedCredentials()
     {
         RtspUrlCredentials.Redact("rtsp://admin:s3cret@192.168.1.20:554/stream")
             .Must()
@@ -31,7 +31,7 @@ public sealed class RtspUrlCredentialsTests
     }
 
     [Fact]
-    public void Display_masks_when_credentials_are_stored_separately()
+    public void DisplayMasksWhenCredentialsAreStoredSeparately()
     {
         RtspUrlCredentials.Display("rtsp://192.168.1.20:554/stream", hasStoredCredentials: true)
             .Must()
@@ -39,14 +39,14 @@ public sealed class RtspUrlCredentialsTests
     }
 
     [Fact]
-    public void MeaningfulUserInfo_ignores_redaction_placeholder()
+    public void MeaningfulUserInfoIgnoresRedactionPlaceholder()
     {
         RtspUrlCredentials.MeaningfulUserInfo("***").VerifyNullable().BeNull();
         RtspUrlCredentials.MeaningfulUserInfo("admin").Must().Be("admin");
     }
 
     [Fact]
-    public void Split_handles_password_containing_at_sign()
+    public void SplitHandlesPasswordContainingAtSign()
     {
         var parts = RtspUrlCredentials.Split("rtsp://admin:p@ss@cam.local/live");
         parts.UrlWithoutCredentials.Must().Be("rtsp://cam.local/live");

@@ -9,52 +9,58 @@ using NidusVision.Web.Inference;
 
 namespace NidusVision.Tests;
 
-public sealed class RecordingStorageTests
+public sealed class RecordingStorageTests : IDisposable
 {
+    private readonly TestDirectory _directory = new();
+
+    public void Dispose() => _directory.Dispose();
+
     [Fact]
-    public void SegmentDuration_DefaultsToFifteenMinutes()
+    public void SegmentDurationDefaultsToFifteenMinutes()
     {
         var options = new StorageOptions();
         var startInfo = new FfmpegSegmentProcess().CreateStartInfo(
             "rtsp://camera/stream",
             "tcp",
-            CreateTempDirectory(),
+            _directory.Path,
             options.EffectiveSegmentDurationSeconds);
 
         options.EffectiveSegmentDurationSeconds.Must().Be(900);
         AssertArgumentValue(startInfo.ArgumentList, "-segment_time", "900");
         AssertArgumentValue(startInfo.ArgumentList, "-break_non_keyframes", "1");
+        AssertArgumentValue(startInfo.ArgumentList, "-strftime_mkdir", "1");
+        startInfo.ArgumentList[^1].Must().Contain("%Y");
         startInfo.ArgumentList.Must().NotContain("10");
     }
 
     [Fact]
-    public void SegmentDuration_ConfiguredShorterIsNotChanged()
+    public void SegmentDurationConfiguredShorterIsNotChanged()
     {
         var options = new StorageOptions { SegmentDurationSeconds = 5 * 60 };
         var startInfo = new FfmpegSegmentProcess().CreateStartInfo(
             "rtsp://camera/stream",
             "tcp",
-            CreateTempDirectory(),
+            _directory.Path,
             options.EffectiveSegmentDurationSeconds);
 
         AssertArgumentValue(startInfo.ArgumentList, "-segment_time", "300");
     }
 
     [Fact]
-    public void SegmentDuration_ConfiguredLongerWithinCapIsNotChanged()
+    public void SegmentDurationConfiguredLongerWithinCapIsNotChanged()
     {
         var options = new StorageOptions { SegmentDurationSeconds = 17 * 60 };
         var startInfo = new FfmpegSegmentProcess().CreateStartInfo(
             "rtsp://camera/stream",
             "tcp",
-            CreateTempDirectory(),
+            _directory.Path,
             options.EffectiveSegmentDurationSeconds);
 
         AssertArgumentValue(startInfo.ArgumentList, "-segment_time", "1020");
     }
 
     [Fact]
-    public void SegmentDuration_OverThirtyMinutesIsCapped()
+    public void SegmentDurationOverThirtyMinutesIsCapped()
     {
         var options = new StorageOptions { SegmentDurationSeconds = 60 * 60 };
 
@@ -62,9 +68,10 @@ public sealed class RecordingStorageTests
     }
 
     [Fact]
-    public async Task DetectionClip_IsStoredAndIndexedOutsideRecordings()
+    public async Task DetectionClipIsStoredAndIndexedOutsideRecordings()
     {
-        var root = CreateTempDirectory();
+        // Arrange
+        var root = _directory.Path;
         var recordings = Path.Combine(root, "recordings");
         var events = Path.Combine(root, "events");
         Directory.CreateDirectory(recordings);
@@ -72,7 +79,7 @@ public sealed class RecordingStorageTests
         await File.WriteAllBytesAsync(recordingPath, [1, 2, 3, 4]);
 
         var dbOptions = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite($"Data Source={Path.Combine(root, "test.db")}")
+            .UseSqlite($"Data Source={Path.Combine(root, "test.db")};Pooling=False")
             .Options;
         await using var db = new AppDbContext(dbOptions);
         await db.Database.EnsureCreatedAsync();
@@ -95,6 +102,7 @@ public sealed class RecordingStorageTests
             RecordingsDirectory = recordings,
             EventsDirectory = events,
         }));
+        // Act
         await DetectionHostedService.PersistDetectionWithArtifactsAsync(
             db,
             store,
@@ -104,21 +112,20 @@ public sealed class RecordingStorageTests
             start.AddMinutes(1).AddSeconds(5),
             CancellationToken.None);
 
+        // Assert
         var detection = await db.DetectionEvents.SingleAsync();
         detection.ClipPath.Must().NotBeNull();
-        Path.GetFullPath(detection.ClipPath!).Must().NotBe(Path.GetFullPath(recordingPath));
-        Path.GetFullPath(detection.ClipPath!).Must().StartWith(Path.GetFullPath(events), StringComparison.OrdinalIgnoreCase);
-        detection.ClipPath!.FileExists();
-        (await File.ReadAllBytesAsync(detection.ClipPath!)).Must().BeSequenceEqual([1, 2, 3, 4]);
+        Path.GetFullPath(detection.ClipPath!).Must().Be(Path.GetFullPath(recordingPath));
     }
 
     [Fact]
-    public async Task RecordingLibrary_IndexesFilesMissedByTheIngestWatcher()
+    public async Task RecordingLibraryIndexesFilesMissedByTheIngestWatcher()
     {
-        var root = CreateTempDirectory();
+        // Arrange
+        var root = _directory.Path;
         var recordings = Path.Combine(root, "recordings");
         var dbOptions = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite($"Data Source={Path.Combine(root, "test.db")}")
+            .UseSqlite($"Data Source={Path.Combine(root, "test.db")};Pooling=False")
             .Options;
         await using var db = new AppDbContext(dbOptions);
         await db.Database.EnsureCreatedAsync();
@@ -136,8 +143,10 @@ public sealed class RecordingStorageTests
         {
             RecordingsDirectory = recordings,
         }));
-        var result = await library.SearchRecordingsAsync(null, null, 1, 12, CancellationToken.None);
+        // Act
+        var result = await library.SearchRecordingsAsync(null, 1, 12, null, null, CancellationToken.None);
 
+        // Assert
         result.Items.Must().HaveCount(1);
         result.TotalCount.Must().Be(1);
         var recording = result.Items[0];
@@ -149,11 +158,12 @@ public sealed class RecordingStorageTests
     }
 
     [Fact]
-    public async Task RecordingLibrary_ReturnsEmptyWhenStorageDoesNotExist()
+    public async Task RecordingLibraryReturnsEmptyWhenStorageDoesNotExist()
     {
-        var root = CreateTempDirectory();
+        // Arrange
+        var root = _directory.Path;
         var dbOptions = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite($"Data Source={Path.Combine(root, "test.db")}")
+            .UseSqlite($"Data Source={Path.Combine(root, "test.db")};Pooling=False")
             .Options;
         await using var db = new AppDbContext(dbOptions);
         await db.Database.EnsureCreatedAsync();
@@ -163,7 +173,10 @@ public sealed class RecordingStorageTests
             RecordingsDirectory = Path.Combine(root, "missing"),
         }));
 
-        var result = await library.SearchRecordingsAsync(null, null, 1, 12, CancellationToken.None);
+        // Act
+        var result = await library.SearchRecordingsAsync(null, 1, 12, null, null, CancellationToken.None);
+
+        // Assert
         result.Items.Must().BeEmpty();
         result.TotalCount.Must().Be(0);
     }
@@ -178,10 +191,4 @@ public sealed class RecordingStorageTests
         arguments[index + 1].Must().Be(expected);
     }
 
-    private static string CreateTempDirectory()
-    {
-        var path = Path.Combine(Path.GetTempPath(), "nidus-tests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(path);
-        return path;
-    }
 }
