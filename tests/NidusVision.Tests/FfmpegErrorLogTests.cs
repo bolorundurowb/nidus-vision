@@ -5,7 +5,7 @@ namespace NidusVision.Tests;
 public sealed class FfmpegErrorLogTests
 {
     [Fact]
-    public void Describe_reports_authentication_failures()
+    public void DescribeReportsAuthenticationFailures()
     {
         const string log = """
             [rtsp @ 000001] method DESCRIBE failed: 401 Unauthorized
@@ -15,7 +15,7 @@ public sealed class FfmpegErrorLogTests
     }
 
     [Fact]
-    public void Describe_reports_unreachable_cameras()
+    public void DescribeReportsUnreachableCameras()
     {
         FfmpegErrorLog.Describe("[tcp @ 1] Connection refused", "fallback")
             .Must()
@@ -23,7 +23,7 @@ public sealed class FfmpegErrorLogTests
     }
 
     [Fact]
-    public void Describe_redacts_credentials_from_unknown_errors()
+    public void DescribeRedactsCredentialsFromUnknownErrors()
     {
         var message = FfmpegErrorLog.Describe("Error opening rtsp://admin:s3cret@cam.local/live0 for reading", "fallback");
         message.Must().NotContain("s3cret");
@@ -31,13 +31,13 @@ public sealed class FfmpegErrorLogTests
     }
 
     [Fact]
-    public void Describe_falls_back_when_log_is_empty()
+    public void DescribeFallsBackWhenLogIsEmpty()
     {
         FfmpegErrorLog.Describe("   ", "fallback").Must().Be("fallback");
     }
 
     [Fact]
-    public void Appended_lines_are_capped_and_ordered()
+    public void AppendedLinesAreCappedAndOrdered()
     {
         var log = new FfmpegErrorLog();
         for (var i = 0; i < 60; i++)

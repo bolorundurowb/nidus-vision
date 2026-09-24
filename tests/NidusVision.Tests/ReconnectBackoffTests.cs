@@ -4,12 +4,19 @@ namespace NidusVision.Tests;
 
 public sealed class ReconnectBackoffTests
 {
-    [Fact]
-    public void Delay_grows_then_caps()
+    [Theory]
+    [InlineData(0, 1)]
+    [InlineData(1, 2)]
+    [InlineData(10, 60)]
+    public void DelayForAttemptReturnsExponentialDelayCappedAtOneMinute(int attempt, double expectedSeconds)
     {
+        // Arrange
         var backoff = new ReconnectBackoff(TimeProvider.System);
-        backoff.DelayForAttempt(0).TotalSeconds.Must().Be(1);
-        backoff.DelayForAttempt(1).TotalSeconds.Must().Be(2);
-        backoff.DelayForAttempt(10).TotalSeconds.Must().Be(60);
+
+        // Act
+        var delay = backoff.DelayForAttempt(attempt);
+
+        // Assert
+        delay.TotalSeconds.Must().Be(expectedSeconds);
     }
 }

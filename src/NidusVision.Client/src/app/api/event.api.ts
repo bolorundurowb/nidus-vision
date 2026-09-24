@@ -9,6 +9,7 @@ export interface EventDto {
   startUtc: string;
   endUtc: string;
   hasThumbnail: boolean;
+  resolution: string | null;
 }
 
 export interface RecordingDto {
@@ -20,6 +21,8 @@ export interface RecordingDto {
   byteSize: number;
   hasHuman: boolean;
   available: boolean;
+  hasThumbnail: boolean;
+  resolution: string | null;
 }
 
 export interface PagedResult<T> {

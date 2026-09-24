@@ -26,6 +26,7 @@ builder.Services.AddScoped<SettingsService>();
 builder.Services.AddScoped<TimelineService>();
 builder.Services.AddScoped<EventLibraryService>();
 builder.Services.AddSingleton<EventArtifactStore>();
+builder.Services.AddSingleton<VideoThumbnailExtractor>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ReconnectBackoff>();
 builder.Services.AddSingleton<FfmpegSegmentProcess>();
@@ -34,6 +35,7 @@ builder.Services.AddSignalR();
 builder.Services.AddSingleton<HumanDetector>();
 builder.Services.AddHostedService<DetectionHostedService>();
 builder.Services.AddHostedService<CameraIngestHostedService>();
+builder.Services.AddHostedService<ThumbnailWorker>();
 builder.Services.AddHostedService<RetentionWorker>();
 builder.Services.AddHealthChecks();
 

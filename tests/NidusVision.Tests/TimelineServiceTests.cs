@@ -1,22 +1,15 @@
-using Microsoft.Data.Sqlite;
-using Microsoft.EntityFrameworkCore;
 using NidusVision.Core.Models;
 using NidusVision.Data;
 using NidusVision.Web.Timeline;
 
 namespace NidusVision.Tests;
 
-public sealed class TimelineServiceTests : IDisposable
+public sealed class TimelineServiceTests : SqliteTestBase
 {
-    private readonly SqliteConnection _connection = new("Data Source=:memory:");
-
-    public TimelineServiceTests() => _connection.Open();
-
-    public void Dispose() => _connection.Dispose();
-
     [Fact]
-    public async Task Timeline_overlays_detections_on_continuous_segments()
+    public async Task GetAsyncWithOverlappingSegmentsAndDetectionOverlaysHumanInterval()
     {
+        // Arrange
         await using var db = CreateContext();
         var camera = new Camera { Name = "Front", MainRtspUrl = "rtsp://cam/stream" };
         var start = DateTimeOffset.Parse("2026-09-23T14:00:00Z");
@@ -47,7 +40,10 @@ public sealed class TimelineServiceTests : IDisposable
         });
         await db.SaveChangesAsync();
 
+        // Act
         var rows = await new TimelineService(db).GetAsync(start, start.AddHours(1), CancellationToken.None);
+
+        // Assert
         rows.Must().HaveCount(1);
         var continuous = rows[0].Intervals.Single(i => !i.Human);
         continuous.Start.Must().Be(start);
@@ -55,13 +51,5 @@ public sealed class TimelineServiceTests : IDisposable
         var human = rows[0].Intervals.Single(i => i.Human);
         human.Start.Must().Be(start.AddMinutes(5));
         human.End.Must().Be(start.AddMinutes(6));
-    }
-
-    private AppDbContext CreateContext()
-    {
-        var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlite(_connection).Options;
-        var db = new AppDbContext(options);
-        db.Database.EnsureCreated();
-        return db;
     }
 }

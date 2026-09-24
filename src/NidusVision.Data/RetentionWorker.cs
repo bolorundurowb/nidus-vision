@@ -26,7 +26,7 @@ public sealed class RetentionWorker(IServiceScopeFactory scopes, TimeProvider ti
         }
     }
 
-    internal async Task RunOnceAsync(CancellationToken cancellationToken)
+    public async Task RunOnceAsync(CancellationToken cancellationToken)
     {
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -44,12 +44,15 @@ public sealed class RetentionWorker(IServiceScopeFactory scopes, TimeProvider ti
 
         foreach (var item in purge)
         {
+            var entity = await db.RecordingSegments.FindAsync([item.Id], cancellationToken);
             if (File.Exists(item.Path))
             {
                 File.Delete(item.Path);
             }
 
-            var entity = await db.RecordingSegments.FindAsync([item.Id], cancellationToken);
+            DeleteIfExists(RecordingPath.ThumbnailFor(item.Path));
+            DeleteIfExists(entity?.ThumbnailPath);
+
             if (entity is not null)
             {
                 db.RecordingSegments.Remove(entity);

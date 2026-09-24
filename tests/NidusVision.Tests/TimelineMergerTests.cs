@@ -5,7 +5,7 @@ namespace NidusVision.Tests;
 public sealed class TimelineMergerTests
 {
     [Fact]
-    public void Merge_combines_overlapping_same_kind()
+    public void MergeCombinesOverlappingSameKind()
     {
         var start = DateTimeOffset.Parse("2026-09-23T14:00:00Z");
         var intervals = new TimeInterval[]
@@ -19,7 +19,7 @@ public sealed class TimelineMergerTests
     }
 
     [Fact]
-    public void Merge_keeps_human_separate()
+    public void MergeKeepsHumanSeparate()
     {
         var start = DateTimeOffset.Parse("2026-09-23T14:00:00Z");
         var intervals = new TimeInterval[]
@@ -32,7 +32,7 @@ public sealed class TimelineMergerTests
     }
 
     [Fact]
-    public void Merge_combines_same_kind_around_interleaved_other_kind()
+    public void MergeCombinesSameKindAroundInterleavedOtherKind()
     {
         var start = DateTimeOffset.Parse("2026-09-23T14:00:00Z");
         var intervals = new TimeInterval[]
@@ -52,7 +52,7 @@ public sealed class TimelineMergerTests
     }
 
     [Fact]
-    public void ToPercent_clamps_to_window()
+    public void ToPercentClampsToWindow()
     {
         var start = DateTimeOffset.Parse("2026-09-23T14:00:00Z");
         TimelineMerger.ToPercent(start.AddMinutes(-1), start, TimeSpan.FromHours(1)).Must().Be(0);

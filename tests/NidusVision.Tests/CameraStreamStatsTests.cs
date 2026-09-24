@@ -7,7 +7,7 @@ public sealed class CameraStreamStatsTests
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-09-23T12:00:00Z");
 
     [Fact]
-    public void Bitrate_averages_the_sampled_segments()
+    public void BitrateAveragesTheSampledSegments()
     {
         var samples = new[]
         {
@@ -19,7 +19,7 @@ public sealed class CameraStreamStatsTests
     }
 
     [Fact]
-    public void Bitrate_stops_an_in_progress_segment_at_the_current_time()
+    public void BitrateStopsAnInProgressSegmentAtTheCurrentTime()
     {
         var samples = new[] { new SegmentStatSample(Now.AddMinutes(-10), Now.AddMinutes(20), 75_000_000) };
 
@@ -27,7 +27,7 @@ public sealed class CameraStreamStatsTests
     }
 
     [Fact]
-    public void Bitrate_falls_back_to_kbps_for_low_rate_streams()
+    public void BitrateFallsBackToKbpsForLowRateStreams()
     {
         var samples = new[] { new SegmentStatSample(Now.AddMinutes(-10), Now, 60_000_000) };
 
@@ -35,7 +35,7 @@ public sealed class CameraStreamStatsTests
     }
 
     [Fact]
-    public void Bitrate_is_unknown_until_the_sample_is_long_enough()
+    public void BitrateIsUnknownUntilTheSampleIsLongEnough()
     {
         var samples = new[] { new SegmentStatSample(Now.AddSeconds(-5), Now, 75_000_000) };
 
@@ -43,7 +43,7 @@ public sealed class CameraStreamStatsTests
     }
 
     [Fact]
-    public void Bitrate_is_unknown_without_recorded_bytes()
+    public void BitrateIsUnknownWithoutRecordedBytes()
     {
         var samples = new[] { new SegmentStatSample(Now.AddMinutes(-30), Now, 0) };
 
@@ -55,22 +55,30 @@ public sealed class CameraStreamStatsTests
     [InlineData(-1, 0, "1 day")]
     [InlineData(0, -5, "5 hours")]
     [InlineData(0, -1, "1 hour")]
-    public void Retention_reports_how_far_back_footage_reaches(int days, int hours, string expected)
+    public void RetentionReportsHowFarBackFootageReaches(int days, int hours, string expected)
     {
+        // Arrange
         var oldest = Now.AddDays(days).AddHours(hours);
 
-        CameraStreamStats.Retention(oldest, Now).Must().Be(expected);
+        // Act
+        var retention = CameraStreamStats.Retention(oldest, Now);
+
+        // Assert
+        retention.Must().Be(expected);
     }
 
-    [Fact]
-    public void Retention_reports_sub_hour_footage_in_minutes()
+    [Theory]
+    [InlineData(-720, "12 minutes")]
+    [InlineData(-20, "< 1 minute")]
+    public void RetentionWithSubHourFootageReturnsMinuteDescription(int seconds, string expected)
     {
-        CameraStreamStats.Retention(Now.AddMinutes(-12), Now).Must().Be("12 minutes");
-        CameraStreamStats.Retention(Now.AddSeconds(-20), Now).Must().Be("< 1 minute");
+        var retention = CameraStreamStats.Retention(Now.AddSeconds(seconds), Now);
+
+        retention.Must().Be(expected);
     }
 
     [Fact]
-    public void Retention_is_unknown_without_recordings()
+    public void RetentionIsUnknownWithoutRecordings()
     {
         CameraStreamStats.Retention(null, Now).VerifyNullable().BeNull();
     }
