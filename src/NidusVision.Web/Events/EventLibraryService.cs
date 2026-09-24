@@ -20,11 +20,12 @@ public sealed class EventLibraryService(AppDbContext db, IOptions<StorageOptions
     private const int MaxPageSize = 100;
 
     public async Task<PagedResponse<EventResponse>> SearchAsync(
-        string? q,
         Guid? cameraId,
         float minConfidence,
         int page,
         int pageSize,
+        DateTimeOffset? fromUtc,
+        DateTimeOffset? toUtc,
         CancellationToken cancellationToken)
     {
         (page, pageSize) = NormalizePage(page, pageSize);
@@ -32,10 +33,13 @@ public sealed class EventLibraryService(AppDbContext db, IOptions<StorageOptions
         var query = db.DetectionEvents
             .AsNoTracking()
             .Where(e => (cameraId == null || e.CameraId == cameraId) && e.Confidence >= minConfidence);
-        if (!string.IsNullOrWhiteSpace(q))
+        if (fromUtc is { } from)
         {
-            var pattern = $"%{EscapeLikePattern(q.Trim())}%";
-            query = query.Where(e => EF.Functions.Like(e.Camera.Name, pattern, "\\"));
+            query = query.Where(e => e.EndUtc >= from);
+        }
+        if (toUtc is { } to)
+        {
+            query = query.Where(e => e.StartUtc < to);
         }
 
         var totalCount = await query.CountAsync(cancellationToken);
@@ -135,10 +139,11 @@ public sealed class EventLibraryService(AppDbContext db, IOptions<StorageOptions
     }
 
     public async Task<PagedResponse<RecordingResponse>> SearchRecordingsAsync(
-        string? q,
         Guid? cameraId,
         int page,
         int pageSize,
+        DateTimeOffset? fromUtc,
+        DateTimeOffset? toUtc,
         CancellationToken cancellationToken)
     {
         await IndexUntrackedRecordingsAsync(cancellationToken);
@@ -147,10 +152,13 @@ public sealed class EventLibraryService(AppDbContext db, IOptions<StorageOptions
         var query = db.RecordingSegments
             .AsNoTracking()
             .Where(segment => cameraId == null || segment.CameraId == cameraId);
-        if (!string.IsNullOrWhiteSpace(q))
+        if (fromUtc is { } from)
         {
-            var pattern = $"%{EscapeLikePattern(q.Trim())}%";
-            query = query.Where(segment => EF.Functions.Like(segment.Camera.Name, pattern, "\\"));
+            query = query.Where(segment => segment.EndUtc >= from);
+        }
+        if (toUtc is { } to)
+        {
+            query = query.Where(segment => segment.StartUtc < to);
         }
 
         var totalCount = await query.CountAsync(cancellationToken);
@@ -263,11 +271,6 @@ public sealed class EventLibraryService(AppDbContext db, IOptions<StorageOptions
 
     private static (int Page, int PageSize) NormalizePage(int page, int pageSize) =>
         (Math.Max(1, page), Math.Clamp(pageSize, 1, MaxPageSize));
-
-    private static string EscapeLikePattern(string value) =>
-        value.Replace("\\", "\\\\", StringComparison.Ordinal)
-            .Replace("%", "\\%", StringComparison.Ordinal)
-            .Replace("_", "\\_", StringComparison.Ordinal);
 }
 
 internal static class EventEndpoints
@@ -275,8 +278,8 @@ internal static class EventEndpoints
     public static void MapEventEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/events");
-        group.MapGet("/", async (string? q, Guid? cameraId, float? minConfidence, int? page, int? pageSize, EventLibraryService events, CancellationToken cancellationToken) =>
-            TypedResults.Ok(await events.SearchAsync(q, cameraId, minConfidence ?? 0, page ?? 1, pageSize ?? 12, cancellationToken)));
+        group.MapGet("/", async (Guid? cameraId, float? minConfidence, DateTimeOffset? fromUtc, DateTimeOffset? toUtc, int? page, int? pageSize, EventLibraryService events, CancellationToken cancellationToken) =>
+            TypedResults.Ok(await events.SearchAsync(cameraId, minConfidence ?? 0, page ?? 1, pageSize ?? 12, fromUtc, toUtc, cancellationToken)));
         group.MapGet("/{id:guid}", async (Guid id, EventLibraryService events, CancellationToken cancellationToken) =>
         {
             var item = await events.GetAsync(id, cancellationToken);
@@ -296,8 +299,8 @@ internal static class EventEndpoints
         });
 
         var recordings = app.MapGroup("/api/recordings");
-        recordings.MapGet("/", async (string? q, Guid? cameraId, int? page, int? pageSize, EventLibraryService events, CancellationToken cancellationToken) =>
-            TypedResults.Ok(await events.SearchRecordingsAsync(q, cameraId, page ?? 1, pageSize ?? 12, cancellationToken)));
+        recordings.MapGet("/", async (Guid? cameraId, DateTimeOffset? fromUtc, DateTimeOffset? toUtc, int? page, int? pageSize, EventLibraryService events, CancellationToken cancellationToken) =>
+            TypedResults.Ok(await events.SearchRecordingsAsync(cameraId, page ?? 1, pageSize ?? 12, fromUtc, toUtc, cancellationToken)));
         recordings.MapGet("/{id:guid}/video.mp4", async (Guid id, EventLibraryService events, CancellationToken cancellationToken) =>
         {
             var path = await events.ResolveRecordingPathAsync(id, cancellationToken);

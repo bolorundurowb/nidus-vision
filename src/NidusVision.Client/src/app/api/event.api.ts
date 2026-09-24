@@ -32,11 +32,12 @@ export interface PagedResult<T> {
 }
 
 export interface LibraryQuery {
-  q: string;
   cameraId: string | null;
   page: number;
   pageSize: number;
   minConfidence?: number;
+  fromUtc?: string;
+  toUtc?: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -61,10 +62,11 @@ function toParams(query: LibraryQuery): Record<string, string | number> {
     page: query.page,
     pageSize: query.pageSize,
   };
-  if (query.q.trim()) params['q'] = query.q.trim();
   if (query.cameraId) params['cameraId'] = query.cameraId;
   if (query.minConfidence !== undefined && query.minConfidence > 0) {
     params['minConfidence'] = query.minConfidence;
   }
+  if (query.fromUtc) params['fromUtc'] = query.fromUtc;
+  if (query.toUtc) params['toUtc'] = query.toUtc;
   return params;
 }

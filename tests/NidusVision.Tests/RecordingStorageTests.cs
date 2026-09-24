@@ -135,7 +135,7 @@ public sealed class RecordingStorageTests
         {
             RecordingsDirectory = recordings,
         }));
-        var result = await library.SearchRecordingsAsync(null, null, 1, 12, CancellationToken.None);
+        var result = await library.SearchRecordingsAsync(null, 1, 12, null, null, CancellationToken.None);
 
         result.Items.Must().HaveCount(1);
         result.TotalCount.Must().Be(1);
@@ -162,7 +162,7 @@ public sealed class RecordingStorageTests
             RecordingsDirectory = Path.Combine(root, "missing"),
         }));
 
-        var result = await library.SearchRecordingsAsync(null, null, 1, 12, CancellationToken.None);
+        var result = await library.SearchRecordingsAsync(null, 1, 12, null, null, CancellationToken.None);
         result.Items.Must().BeEmpty();
         result.TotalCount.Must().Be(0);
     }

@@ -33,11 +33,12 @@ public sealed class EventLibraryPaginationTests : IDisposable
         await db.SaveChangesAsync();
 
         var result = await CreateService(db).SearchAsync(
-            "front",
             front.Id,
             0.7f,
             page: 2,
             pageSize: 2,
+            fromUtc: null,
+            toUtc: null,
             CancellationToken.None);
 
         result.TotalCount.Must().Be(3);
@@ -63,16 +64,56 @@ public sealed class EventLibraryPaginationTests : IDisposable
         await db.SaveChangesAsync();
 
         var result = await CreateService(db).SearchRecordingsAsync(
-            "front",
             front.Id,
             page: 2,
             pageSize: 2,
+            fromUtc: null,
+            toUtc: null,
             CancellationToken.None);
 
         result.TotalCount.Must().Be(5);
         result.TotalPages.Must().Be(3);
         result.Items.Select(item => item.Id).Must().BeSequenceEqual(
             [frontRecordings[2].Id, frontRecordings[1].Id]);
+    }
+
+    [Fact]
+    public async Task Events_and_recordings_are_filtered_to_the_requested_day()
+    {
+        await using var db = CreateContext();
+        var camera = NewCamera("Front Yard");
+        db.Cameras.Add(camera);
+        var day = DateTimeOffset.Parse("2026-09-23T00:00:00Z");
+        db.DetectionEvents.AddRange(
+            NewEvent(camera.Id, day.AddHours(-2), 0.9f),
+            NewEvent(camera.Id, day.AddHours(8), 0.8f),
+            NewEvent(camera.Id, day.AddDays(1).AddHours(1), 0.7f));
+        db.RecordingSegments.AddRange(
+            NewRecording(camera.Id, day.AddMinutes(-10), 1),
+            NewRecording(camera.Id, day.AddHours(10), 2),
+            NewRecording(camera.Id, day.AddDays(1), 3));
+        await db.SaveChangesAsync();
+
+        var events = await CreateService(db).SearchAsync(
+            camera.Id,
+            0,
+            page: 1,
+            pageSize: 12,
+            fromUtc: day,
+            toUtc: day.AddDays(1),
+            CancellationToken.None);
+        var recordings = await CreateService(db).SearchRecordingsAsync(
+            camera.Id,
+            page: 1,
+            pageSize: 12,
+            fromUtc: day,
+            toUtc: day.AddDays(1),
+            CancellationToken.None);
+
+        events.TotalCount.Must().Be(1);
+        events.Items[0].StartUtc.Must().Be(day.AddHours(8));
+        recordings.TotalCount.Must().Be(2);
+        recordings.Items.Select(item => item.ByteSize).Must().BeSequenceEqual([2L, 1L]);
     }
 
     private EventLibraryService CreateService(AppDbContext db) =>

@@ -32,7 +32,7 @@ public sealed class EventResponseTests : IDisposable
         });
         await db.SaveChangesAsync();
 
-        var result = await CreateService(db).SearchAsync(null, null, 0, 1, 12, CancellationToken.None);
+        var result = await CreateService(db).SearchAsync(null, 0, 1, 12, null, null, CancellationToken.None);
         result.Items.Must().HaveCount(1);
         result.Items[0].HasThumbnail.Must().BeTrue();
         typeof(EventResponse).GetProperty("ThumbnailPath").VerifyNullable().BeNull();

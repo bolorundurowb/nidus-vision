@@ -14,13 +14,16 @@ import { AppIcon } from '../ui/app-icon';
         <p class="muted">Find and review recorded moments across your cameras.</p>
       </div>
       <div class="card filters">
-        <label class="search">
-          <app-icon name="search" />
-          <input class="input" placeholder="Search events..." aria-label="Search events" [value]="query()" (input)="onSearch($any($event.target).value)">
+        <label class="camera-filter">
+          <select aria-label="Filter by type" [value]="kind()" (change)="setKind($any($event.target).value)">
+            <option value="all">All types</option>
+            <option value="event">Events</option>
+            <option value="recording">Recordings</option>
+          </select>
         </label>
-        <button type="button" class="btn outline sm" [class.active]="filtersOpen() || minConfidence() > 0" (click)="filtersOpen.set(!filtersOpen())">
-          <app-icon name="sliders-horizontal" />Filters
-        </button>
+        <label class="camera-filter">
+          <input type="date" aria-label="Filter by date" [value]="date()" (change)="setDate($any($event.target).value)">
+        </label>
         <label class="camera-filter">
           <app-icon name="camera" />
           <select aria-label="Filter by camera" [value]="cameraId() ?? ''" (change)="setCamera($any($event.target).value)">
@@ -30,21 +33,10 @@ import { AppIcon } from '../ui/app-icon';
             }
           </select>
         </label>
-      </div>
-      @if (filtersOpen()) {
-        <div class="card filter-panel">
-          <label>
-            Minimum confidence
-            <select [value]="minConfidence()" (change)="setMinConfidence(+$any($event.target).value)">
-              <option value="0">Any confidence</option>
-              <option value="0.5">50% or higher</option>
-              <option value="0.7">70% or higher</option>
-              <option value="0.9">90% or higher</option>
-            </select>
-          </label>
+        @if (filtersActive()) {
           <button type="button" class="btn outline sm" (click)="clearFilters()">Clear filters</button>
-        </div>
-      }
+        }
+      </div>
       @if (loading()) {
         <p class="muted status">Loading recordings and events…</p>
       }
@@ -54,6 +46,7 @@ import { AppIcon } from '../ui/app-icon';
       @if (playbackError(); as message) {
         <p class="load-error" role="alert">{{ message }}</p>
       }
+      @if (showEvents()) {
       @if (selected(); as event) {
         <section class="card player">
           <video controls [src]="'/api/events/' + event.id + '/clip.mp4'" (error)="playbackError.set('The event clip is unavailable.')"></video>
@@ -105,6 +98,8 @@ import { AppIcon } from '../ui/app-icon';
         </nav>
       }
 
+      }
+      @if (showRecordings()) {
       <div class="section-title">
         <div>
           <p class="eyebrow">Continuous recording library</p>
@@ -162,15 +157,14 @@ import { AppIcon } from '../ui/app-icon';
           </div>
         </nav>
       }
+      }
     </div>
   `,
   styles: `
     .filters { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.75rem; }
-    .search { position: relative; flex: 1; min-width: 12rem; display: flex; align-items: center; }
-    .search app-icon { position: absolute; left: 0.75rem; color: var(--muted-foreground); pointer-events: none; }
-    .search .input { padding-left: 2.25rem; }
     .camera-filter { display: inline-flex; align-items: center; gap: 0.5rem; border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.35rem 0.7rem; font-size: 0.75rem; background: var(--card); }
-    .camera-filter select, .filter-panel select { border: 0; background: transparent; color: inherit; outline: 0; }
+    .camera-filter select, .camera-filter input, .filter-panel select { border: 0; background: transparent; color: inherit; outline: 0; }
+    .camera-filter input[type=date] { font: inherit; color-scheme: inherit; }
     .filters .btn.active { background: var(--muted); }
     .filter-panel { display: flex; align-items: flex-end; gap: 1rem; padding: 0.75rem; }
     .filter-panel label { display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.75rem; color: var(--muted-foreground); }
@@ -208,8 +202,9 @@ export class EventsPage {
   protected readonly loading = signal(true);
   protected readonly error = signal<string | null>(null);
   protected readonly playbackError = signal<string | null>(null);
-  protected readonly query = signal('');
   protected readonly cameraId = signal<string | null>(null);
+  protected readonly kind = signal<'all' | 'event' | 'recording'>('all');
+  protected readonly date = signal('');
   protected readonly minConfidence = signal(0);
   protected readonly filtersOpen = signal(false);
   protected readonly eventPage = signal(1);
@@ -218,20 +213,34 @@ export class EventsPage {
   protected readonly recordingPage = signal(1);
   protected readonly recordingTotal = signal(0);
   protected readonly recordingTotalPages = signal(1);
-  private searchTimer?: ReturnType<typeof setTimeout>;
   private loadSequence = 0;
 
   constructor() {
     void this.load();
   }
 
-  protected onSearch(q: string): void {
-    this.query.set(q);
-    clearTimeout(this.searchTimer);
-    this.searchTimer = setTimeout(() => {
-      this.resetPages();
-      void this.load();
-    }, 250);
+  protected showEvents(): boolean {
+    return this.kind() !== 'recording';
+  }
+
+  protected showRecordings(): boolean {
+    return this.kind() !== 'event';
+  }
+
+  protected filtersActive(): boolean {
+    return this.kind() !== 'all' || this.date() !== '' || this.minConfidence() > 0 || this.cameraId() !== null;
+  }
+
+  protected setKind(kind: string): void {
+    this.kind.set(kind === 'event' || kind === 'recording' ? kind : 'all');
+    this.resetPages();
+    void this.load();
+  }
+
+  protected setDate(value: string): void {
+    this.date.set(value);
+    this.resetPages();
+    void this.load();
   }
 
   protected setCamera(cameraId: string): void {
@@ -247,6 +256,8 @@ export class EventsPage {
   }
 
   protected clearFilters(): void {
+    this.kind.set('all');
+    this.date.set('');
     this.cameraId.set(null);
     this.minConfidence.set(0);
     this.resetPages();
@@ -307,48 +318,67 @@ export class EventsPage {
     const sequence = ++this.loadSequence;
     this.loading.set(true);
     this.error.set(null);
-    const [events, recordings] = await Promise.allSettled([
-      this.api.search({
-        q: this.query(),
-        cameraId: this.cameraId(),
-        minConfidence: this.minConfidence(),
-        page: this.eventPage(),
-        pageSize: this.pageSize,
-      }),
-      this.api.recordings({
-        q: this.query(),
-        cameraId: this.cameraId(),
-        page: this.recordingPage(),
-        pageSize: this.pageSize,
-      }),
-    ]);
+    const range = this.dateRange();
+    const eventsPromise = this.showEvents()
+      ? this.api.search({
+          cameraId: this.cameraId(),
+          minConfidence: this.minConfidence(),
+          page: this.eventPage(),
+          pageSize: this.pageSize,
+          ...range,
+        })
+      : Promise.resolve(null);
+    const recordingsPromise = this.showRecordings()
+      ? this.api.recordings({
+          cameraId: this.cameraId(),
+          page: this.recordingPage(),
+          pageSize: this.pageSize,
+          ...range,
+        })
+      : Promise.resolve(null);
+    const [events, recordings] = await Promise.allSettled([eventsPromise, recordingsPromise]);
     if (sequence !== this.loadSequence) return;
 
     if (events.status === 'fulfilled') {
-      this.events.set(events.value.items);
-      this.eventTotal.set(events.value.totalCount);
-      this.eventTotalPages.set(events.value.totalPages);
+      const page = events.value;
+      this.events.set(page?.items ?? []);
+      this.eventTotal.set(page?.totalCount ?? 0);
+      this.eventTotalPages.set(page?.totalPages ?? 1);
     } else {
       this.events.set([]);
       this.eventTotal.set(0);
     }
     if (recordings.status === 'fulfilled') {
-      this.recordings.set(recordings.value.items);
-      this.recordingTotal.set(recordings.value.totalCount);
-      this.recordingTotalPages.set(recordings.value.totalPages);
+      const page = recordings.value;
+      this.recordings.set(page?.items ?? []);
+      this.recordingTotal.set(page?.totalCount ?? 0);
+      this.recordingTotalPages.set(page?.totalPages ?? 1);
     } else {
       this.recordings.set([]);
       this.recordingTotal.set(0);
     }
 
     const failures = [
-      events.status === 'rejected' ? 'events' : null,
-      recordings.status === 'rejected' ? 'recordings' : null,
+      this.showEvents() && events.status === 'rejected' ? 'events' : null,
+      this.showRecordings() && recordings.status === 'rejected' ? 'recordings' : null,
     ].filter(Boolean);
     if (failures.length > 0) {
       this.error.set(`Could not load ${failures.join(' and ')}. Check the server connection and sign in again.`);
     }
     this.loading.set(false);
+  }
+
+  private dateRange(): { fromUtc?: string; toUtc?: string } {
+    const day = this.date();
+    if (!day) {
+      return {};
+    }
+
+    const from = new Date(`${day}T00:00:00`);
+    return {
+      fromUtc: from.toISOString(),
+      toUtc: new Date(from.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+    };
   }
 
   private resetPages(): void {
