@@ -2,6 +2,10 @@
 
 Self-hosted NVR: live view, continuous recording, and person-tagged playback from RTSP cameras.
 
+![Monitor Center live view with a four-camera grid and recording timeline](docs/monitor.jpg)
+
+![IP cameras page with per-camera status, bitrate, and stream diagnostics](docs/cameras.png)
+
 ## Run
 
 ```bash
