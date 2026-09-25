@@ -45,6 +45,7 @@ public sealed class RecordingSegment
     public DateTimeOffset EndUtc { get; set; }
     public string Codec { get; set; } = "h264";
     public bool HasHuman { get; set; }
+    public bool IsFinalized { get; set; } = true;
     public long ByteSize { get; set; }
     public string? ThumbnailPath { get; set; }
 }

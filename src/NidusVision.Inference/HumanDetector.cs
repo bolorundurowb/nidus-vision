@@ -1,23 +1,29 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.ML.OnnxRuntime;
+using Microsoft.ML.OnnxRuntime.Tensors;
 using NidusVision.Core.Inference;
 
 namespace NidusVision.Inference;
 
-public sealed class HumanDetector : IDisposable
+public sealed class HumanDetector : IHumanDetector, IDisposable
 {
+    public const float NmsIouThreshold = 0.45f;
+
     private readonly InferenceSession? _session;
+    private readonly string? _inputName;
+    private readonly Lock _run = new();
     private readonly ILogger<HumanDetector> _logger;
 
-    public HumanDetector(ILogger<HumanDetector> logger)
+    public HumanDetector(ILogger<HumanDetector> logger, string? contentRoot = null)
     {
         _logger = logger;
-        var model = Environment.GetEnvironmentVariable("NIDUS_PERSON_MODEL") ?? "models/person.onnx";
-        if (!File.Exists(model))
+        var model = PersonModelPath.Resolve(contentRoot);
+        if (model is null)
         {
             logger.LogInformation(
-                "Person model not found at {Path}; person detection stays off until you set NIDUS_PERSON_MODEL or place an ONNX file there.",
-                model);
+                "Person model not found (set {Env} or place {File} under models/); person detection stays off.",
+                PersonModelPath.EnvironmentVariable,
+                PersonModelPath.FileName);
             return;
         }
 
@@ -26,26 +32,82 @@ public sealed class HumanDetector : IDisposable
         {
             options.AppendExecutionProvider_CPU();
             _session = new InferenceSession(model, options);
-            logger.LogInformation("Loaded ONNX person detector from {Path}.", model);
+            _inputName = _session.InputMetadata.Keys.First();
+            var input = _session.InputMetadata[_inputName];
+            var outputName = _session.OutputMetadata.Keys.First();
+            var output = _session.OutputMetadata[outputName];
+            logger.LogInformation(
+                "Loaded ONNX person detector from {Path} ({Input} {InputShape} -> {Output} {OutputShape}).",
+                model,
+                _inputName,
+                FormatShape(input.Dimensions),
+                outputName,
+                FormatShape(output.Dimensions));
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Failed to initialize ONNX Runtime; falling back to no-op detector.");
+            _session?.Dispose();
+            _session = null;
         }
     }
 
-    public IReadOnlyList<BoundingBox> Detect(ReadOnlySpan<byte> frame, int width, int height, float threshold)
+    public bool IsAvailable => _session is not null;
+
+    public IReadOnlyList<BoundingBox> Detect(
+        ReadOnlySpan<byte> rgb24,
+        int width,
+        int height,
+        int sourceWidth,
+        int sourceHeight,
+        float threshold)
     {
-        if (_session is null || frame.IsEmpty || width <= 0 || height <= 0)
+        if (_session is null || rgb24.IsEmpty || width <= 0 || height <= 0 || sourceWidth <= 0 || sourceHeight <= 0)
         {
             return [];
         }
 
-        // A real tensor conversion belongs here; without a shipped model we return no detections.
-        _ = frame.Length;
-        _ = threshold;
-        return [];
+        var session = _session;
+
+        var transform = LetterboxTransform.For(sourceWidth, sourceHeight);
+        byte[] letterboxed;
+        if (width == transform.InputSize && height == transform.InputSize)
+        {
+            letterboxed = rgb24.ToArray();
+        }
+        else if (width == sourceWidth && height == sourceHeight)
+        {
+            letterboxed = RgbLetterbox.Apply(rgb24, width, height, transform);
+        }
+        else
+        {
+            _logger.LogDebug(
+                "Skipping frame with unexpected size {Width}x{Height} (source {SourceWidth}x{SourceHeight}).",
+                width,
+                height,
+                sourceWidth,
+                sourceHeight);
+            return [];
+        }
+
+        var packed = RgbLetterbox.PackNchw(letterboxed, transform.InputSize, transform.InputSize);
+        var input = new DenseTensor<float>(packed, [1, 3, transform.InputSize, transform.InputSize]);
+        float[] data;
+        int[] dims;
+        lock (_run)
+        {
+            using var results = session.Run([NamedOnnxValue.CreateFromTensor(_inputName, input)]);
+            var output = results[0].AsTensor<float>();
+            data = output.ToArray();
+            dims = output.Dimensions.ToArray();
+        }
+
+        var decoded = YoloV8Decoder.Decode(data, dims, threshold, transform);
+        return NonMaxSuppression.Filter(decoded, NmsIouThreshold);
     }
 
     public void Dispose() => _session?.Dispose();
+
+    private static string FormatShape(int[] dims) =>
+        "[" + string.Join(',', dims.Select(d => d <= 0 ? "dyn" : d.ToString())) + "]";
 }

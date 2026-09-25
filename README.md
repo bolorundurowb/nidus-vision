@@ -1,6 +1,6 @@
 # Nidus Vision
 
-Lightweight self-hosted NVR: .NET 10 API + Angular 21 UI, SQLite WAL, FFmpeg pass-through recording, MSE live view, and optional ONNX/OpenVINO person detection.
+Lightweight self-hosted NVR: .NET 10 API + Angular 21 UI, SQLite WAL, FFmpeg pass-through recording, MSE live view, and ONNX person detection (CPU).
 
 ## Install (Docker)
 
@@ -14,7 +14,9 @@ Open http://localhost:8080. First visit `/login` and set an 8+ character admin p
 
 Data lives in the `nidus-data` volume; recordings in `nidus-recordings`. Camera RTSP URLs must be reachable **from the container** (use a LAN IP, not `127.0.0.1`). Streams on the Docker host can use `host.docker.internal`.
 
-Intel QuickSync / OpenVINO iGPU (Linux host) — uncomment in `docker/docker-compose.yml`:
+Person detection uses `models/person.onnx` (copied into the image when present) or `NIDUS_PERSON_MODEL`. The ingest FFmpeg process samples a low-FPS RGB frame from the same RTSP connection used for 15-minute recordings; detection runs in a background service so a slow model cannot stall capture.
+
+Intel iGPU / VAAPI on a Linux host (optional hardware video decode, not required for person detection) — uncomment in `docker/docker-compose.yml`:
 
 ```yaml
 devices:
@@ -23,7 +25,6 @@ devices:
 group_add: ["44", "109"]
 environment:
   LIBVA_DRIVER_NAME: iHD
-  OPENVINO_DEVICE: GPU
 ```
 
 ## Develop
@@ -51,7 +52,7 @@ UI: http://localhost:4200 (proxies `/api` and `/hubs` to 8080).
 dotnet test NidusVision.slnx
 ```
 
-Unit tests cover timeline merge, retention, ROI, detection overlap, event filters, and reconnect backoff.
+Unit tests cover timeline merge, retention, ROI, detection overlap, YOLO decoding, recording filters, and reconnect backoff.
 
 ## CI
 

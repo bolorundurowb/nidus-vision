@@ -17,9 +17,8 @@ services:
       Storage__DataDirectory: /app/data
       Storage__RecordingsDirectory: /var/nidus/recordings
       Storage__EventsDirectory: /var/nidus/events
-      # LIBVA_DRIVER_NAME: iHD
-      # OPENVINO_DEVICE: GPU
       # NIDUS_PERSON_MODEL: /app/models/person.onnx
+      # LIBVA_DRIVER_NAME: iHD
     # devices:
     #   - /dev/dri/renderD128:/dev/dri/renderD128
     #   - /dev/dri/card0:/dev/dri/card0

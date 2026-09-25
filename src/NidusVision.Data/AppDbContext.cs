@@ -36,6 +36,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(e => e.ThumbnailPath).HasMaxLength(2048);
             entity.HasIndex(e => new { e.CameraId, e.StartUtc });
             entity.HasIndex(e => new { e.HasHuman, e.EndUtc });
+            entity.HasIndex(e => e.Path).IsUnique();
+            entity.HasIndex(e => e.IsFinalized);
             entity.HasOne(e => e.Camera)
                 .WithMany(c => c.Segments)
                 .HasForeignKey(e => e.CameraId)

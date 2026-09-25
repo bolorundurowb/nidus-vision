@@ -32,7 +32,11 @@ builder.Services.AddSingleton<ReconnectBackoff>();
 builder.Services.AddSingleton<FfmpegSegmentProcess>();
 builder.Services.AddSingleton<CameraStatusTracker>();
 builder.Services.AddSignalR();
-builder.Services.AddSingleton<HumanDetector>();
+builder.Services.AddSingleton<DetectionFrameBroker>();
+builder.Services.AddSingleton(sp => new HumanDetector(
+    sp.GetRequiredService<ILogger<HumanDetector>>(),
+    sp.GetRequiredService<IWebHostEnvironment>().ContentRootPath));
+builder.Services.AddSingleton<IHumanDetector>(sp => sp.GetRequiredService<HumanDetector>());
 builder.Services.AddHostedService<DetectionHostedService>();
 builder.Services.AddHostedService<CameraIngestHostedService>();
 builder.Services.AddHostedService<ThumbnailWorker>();

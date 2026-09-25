@@ -1,5 +1,5 @@
 import { DatePipe, DecimalPipe } from '@angular/common';
-import { Component, inject, signal } from '@angular/core';
+import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { EventApi, EventDto, RecordingDto } from '../api/event.api';
 import { CameraStore } from '../camera.store';
 import { AppIcon } from '../ui/app-icon';
@@ -52,6 +52,15 @@ import { AppIcon } from '../ui/app-icon';
             }
           </select>
         </label>
+        @if (showRecordings()) {
+          <label class="camera-filter">
+            <select aria-label="Filter recordings by detections" [value]="detectionFilter()" (change)="setDetectionFilter($any($event.target).value)">
+              <option value="all">All recordings</option>
+              <option value="yes">With detections</option>
+              <option value="no">Without detections</option>
+            </select>
+          </label>
+        }
         @if (filtersActive()) {
           <button type="button" class="btn outline sm" (click)="clearFilters()">Clear filters</button>
         }
@@ -158,6 +167,9 @@ import { AppIcon } from '../ui/app-icon';
                 <img [src]="'/api/recordings/' + recording.id + '/thumbnail'" alt="" (error)="markThumbnailFailed(recording.id)">
               }
               <span>{{ duration(recording.startUtc, recording.endUtc) }}</span>
+              @if (recording.isActive) {
+                <span class="live">Recording</span>
+              }
             </div>
             <div class="body">
               <div class="title-row">
@@ -168,7 +180,7 @@ import { AppIcon } from '../ui/app-icon';
                 <span class="size">{{ recording.byteSize / 1048576 | number:'1.1-1' }} MB</span>
               </div>
               <div class="foot">
-                <span>{{ recording.available ? 'Continuous recording' : 'File missing' }}</span>
+                <span>{{ recording.available ? (recording.isActive ? 'Recording now' : 'Continuous recording') : 'File missing' }}</span>
                 @if (recording.available) {
                   <button
                     type="button"
@@ -212,6 +224,7 @@ import { AppIcon } from '../ui/app-icon';
     .thumb { aspect-ratio: 16/9; background: linear-gradient(#0f172a, #020617); position: relative; overflow: hidden; }
     .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .thumb span { position: absolute; left: 0.75rem; bottom: 0.75rem; background: rgb(0 0 0 / 0.5); color: #fff; font-size: 11px; padding: 0.2rem 0.4rem; border-radius: 0.25rem; }
+    .thumb span.live { left: auto; right: 0.75rem; background: #dc2626; }
     .body { padding: 1rem; }
     h3 { margin: 0; font-size: 0.875rem; font-weight: 500; }
     .title-row { display: flex; justify-content: space-between; gap: 0.5rem; }
@@ -255,9 +268,12 @@ export class EventsPage {
   protected readonly recordingPage = signal(1);
   protected readonly recordingTotal = signal(0);
   protected readonly recordingTotalPages = signal(1);
+  protected readonly detectionFilter = signal<'all' | 'yes' | 'no'>('all');
   private loadSequence = 0;
+  private pollHandle: ReturnType<typeof setInterval> | undefined;
 
   constructor() {
+    inject(DestroyRef).onDestroy(() => this.stopPolling());
     void this.load();
   }
 
@@ -270,7 +286,7 @@ export class EventsPage {
   }
 
   protected filtersActive(): boolean {
-    return this.kind() !== 'all' || this.fromDateTime() !== '' || this.toDateTime() !== '' || this.cameraId() !== null;
+    return this.kind() !== 'all' || this.fromDateTime() !== '' || this.toDateTime() !== '' || this.cameraId() !== null || this.detectionFilter() !== 'all';
   }
 
   protected setKind(kind: string): void {
@@ -295,12 +311,19 @@ export class EventsPage {
     void this.load();
   }
 
+  protected setDetectionFilter(value: string): void {
+    this.detectionFilter.set(value === 'yes' || value === 'no' ? value : 'all');
+    this.resetPages();
+    void this.load();
+  }
+
   protected clearFilters(): void {
     this.kind.set('all');
     this.fromDateTime.set('');
     this.toDateTime.set('');
     this.dateRangeError.set(null);
     this.cameraId.set(null);
+    this.detectionFilter.set('all');
     this.resetPages();
     void this.load();
   }
@@ -388,11 +411,14 @@ export class EventsPage {
     await this.load();
   }
 
-  private async load(): Promise<void> {
+  private async load(silent = false): Promise<void> {
     const sequence = ++this.loadSequence;
-    this.loading.set(true);
+    if (!silent) {
+      this.loading.set(true);
+    }
     this.error.set(null);
     const range = this.dateRange();
+    const detection = this.detectionFilter();
     const eventsPromise = this.showEvents()
       ? this.api.search({
           cameraId: this.cameraId(),
@@ -407,6 +433,7 @@ export class EventsPage {
           page: this.recordingPage(),
           pageSize: this.pageSize,
           ...range,
+          ...(detection === 'yes' ? { hasHuman: true } : detection === 'no' ? { hasHuman: false } : {}),
         })
       : Promise.resolve(null);
     const [events, recordings] = await Promise.allSettled([eventsPromise, recordingsPromise]);
@@ -426,6 +453,13 @@ export class EventsPage {
       this.recordings.set(page?.items ?? []);
       this.recordingTotal.set(page?.totalCount ?? 0);
       this.recordingTotalPages.set(page?.totalPages ?? 1);
+      const selected = this.selectedRecording();
+      if (selected) {
+        const updated = page?.items.find(item => item.id === selected.id);
+        if (updated) {
+          this.selectedRecording.set(updated);
+        }
+      }
     } else {
       this.recordings.set([]);
       this.recordingTotal.set(0);
@@ -438,7 +472,27 @@ export class EventsPage {
     if (failures.length > 0) {
       this.error.set(`Could not load ${failures.join(' and ')}. Check the server connection and sign in again.`);
     }
-    this.loading.set(false);
+    if (!silent) {
+      this.loading.set(false);
+    }
+    this.syncPolling();
+  }
+
+  private syncPolling(): void {
+    const shouldPoll = this.showRecordings() && this.recordings().some(recording => recording.isActive);
+    if (shouldPoll) {
+      this.pollHandle ??= setInterval(() => void this.load(true), 10_000);
+      return;
+    }
+
+    this.stopPolling();
+  }
+
+  private stopPolling(): void {
+    if (this.pollHandle) {
+      clearInterval(this.pollHandle);
+      this.pollHandle = undefined;
+    }
   }
 
   private dateRange(): { fromUtc?: string; toUtc?: string } {

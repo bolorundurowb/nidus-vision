@@ -65,6 +65,7 @@ public sealed class EventLibraryPaginationTests : SqliteTestBase
             pageSize: 2,
             fromUtc: null,
             toUtc: null,
+            hasHuman: null,
             CancellationToken.None);
 
         // Assert
@@ -106,6 +107,7 @@ public sealed class EventLibraryPaginationTests : SqliteTestBase
             pageSize: 12,
             fromUtc: day,
             toUtc: day.AddDays(1),
+            hasHuman: null,
             CancellationToken.None);
 
         // Assert
@@ -115,11 +117,37 @@ public sealed class EventLibraryPaginationTests : SqliteTestBase
         recordings.Items.Select(item => item.ByteSize).Must().BeSequenceEqual([2L, 1L]);
     }
 
+    [Fact]
+    public async Task SearchRecordingsAsyncFiltersByHasHuman()
+    {
+        await using var db = CreateContext();
+        var camera = NewCamera("Front Yard");
+        db.Cameras.Add(camera);
+        var start = DateTimeOffset.Parse("2026-09-23T12:00:00Z");
+        db.RecordingSegments.AddRange(
+            NewRecording(camera.Id, start, 1),
+            NewRecording(camera.Id, start.AddMinutes(15), 2));
+        var withHuman = NewRecording(camera.Id, start.AddMinutes(30), 3);
+        withHuman.HasHuman = true;
+        db.RecordingSegments.Add(withHuman);
+        await db.SaveChangesAsync();
+
+        var withDetections = await CreateService(db).SearchRecordingsAsync(
+            camera.Id, 1, 12, null, null, true, CancellationToken.None);
+        var without = await CreateService(db).SearchRecordingsAsync(
+            camera.Id, 1, 12, null, null, false, CancellationToken.None);
+
+        withDetections.TotalCount.Must().Be(1);
+        withDetections.Items[0].HasHuman.Must().BeTrue();
+        without.TotalCount.Must().Be(2);
+        without.Items.All(item => !item.HasHuman).Must().BeTrue();
+    }
+
     private EventLibraryService CreateService(AppDbContext db) =>
         new(db, Options.Create(new StorageOptions
         {
             RecordingsDirectory = Path.Combine(Path.GetTempPath(), "nidus-tests", Guid.NewGuid().ToString("N")),
-        }));
+        }), TimeProvider.System);
 
     private static Camera NewCamera(string name) =>
         new() { Name = name, MainRtspUrl = $"rtsp://localhost/{name}" };
