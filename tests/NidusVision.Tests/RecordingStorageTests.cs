@@ -28,8 +28,8 @@ public sealed class RecordingStorageTests : IDisposable
         options.EffectiveSegmentDurationSeconds.Must().Be(900);
         AssertArgumentValue(startInfo.ArgumentList, "-segment_time", "900");
         AssertArgumentValue(startInfo.ArgumentList, "-break_non_keyframes", "1");
-        AssertArgumentValue(startInfo.ArgumentList, "-strftime_mkdir", "1");
-        startInfo.ArgumentList[^1].Must().Contain("%Y");
+        AssertArgumentValue(startInfo.ArgumentList, "-strftime", "1");
+        startInfo.ArgumentList[^1].Must().Be(Path.Combine(_directory.Path, "%Y%m%dT%H%M%S.mp4"));
         startInfo.ArgumentList.Must().NotContain("10");
     }
 

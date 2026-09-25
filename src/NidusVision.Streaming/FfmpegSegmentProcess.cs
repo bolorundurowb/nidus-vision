@@ -18,7 +18,11 @@ public sealed class FfmpegSegmentProcess
         ArgumentOutOfRangeException.ThrowIfLessThan(segmentDurationSeconds, 1);
         Directory.CreateDirectory(outputDirectory);
         var transportArg = transport.Equals("udp", StringComparison.OrdinalIgnoreCase) ? "udp" : "tcp";
-        var output = Path.Combine(outputDirectory, "%Y", "%m", "%d", "%Y%m%dT%H%M%S.mp4");
+
+        // The segment muxer expands strftime placeholders but never creates directories
+        // (only the HLS muxer has strftime_mkdir), so segments stay flat in the camera
+        // directory that was just created; a dated sub-path would fail with ENOENT.
+        var output = Path.Combine(outputDirectory, "%Y%m%dT%H%M%S.mp4");
         var process = FfmpegExecutable.Create(startInfo =>
         {
             startInfo.ArgumentList.Add("-hide_banner");
@@ -42,8 +46,6 @@ public sealed class FfmpegSegmentProcess
             startInfo.ArgumentList.Add("-reset_timestamps");
             startInfo.ArgumentList.Add("1");
             startInfo.ArgumentList.Add("-strftime");
-            startInfo.ArgumentList.Add("1");
-            startInfo.ArgumentList.Add("-strftime_mkdir");
             startInfo.ArgumentList.Add("1");
             startInfo.ArgumentList.Add(output);
         });
