@@ -23,6 +23,7 @@ export interface RecordingDto {
   available: boolean;
   hasThumbnail: boolean;
   resolution: string | null;
+  isActive: boolean;
 }
 
 export interface PagedResult<T> {
@@ -39,6 +40,7 @@ export interface LibraryQuery {
   pageSize: number;
   fromUtc?: string;
   toUtc?: string;
+  hasHuman?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -66,5 +68,7 @@ function toParams(query: LibraryQuery): Record<string, string | number> {
   if (query.cameraId) params['cameraId'] = query.cameraId;
   if (query.fromUtc) params['fromUtc'] = query.fromUtc;
   if (query.toUtc) params['toUtc'] = query.toUtc;
+  if (query.hasHuman === true) params['hasHuman'] = 'true';
+  if (query.hasHuman === false) params['hasHuman'] = 'false';
   return params;
 }
