@@ -1,5 +1,7 @@
 # Nidus Vision
 
+[![CI](https://github.com/bolorundurowb/nidus-vision/actions/workflows/ci.yml/badge.svg)](https://github.com/bolorundurowb/nidus-vision/actions/workflows/ci.yml)
+
 Self-hosted NVR: live view, continuous recording, and person-tagged playback from RTSP cameras.
 
 ![Monitor Center live view with a four-camera grid and recording timeline](docs/monitor.jpg)

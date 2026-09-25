@@ -125,7 +125,7 @@ export class SettingsPage {
   private readonly inferenceEnabled = signal(true);
   private readonly sampleFps = signal(1);
   private readonly confidenceThreshold = signal(0.6);
-  protected readonly version = signal('0.8.2');
+  protected readonly version = signal('1.0.0');
   protected readonly usedLabel = signal('Storage metrics unavailable');
   protected readonly usedPct = signal(0);
   protected readonly unlimited = signal(true);

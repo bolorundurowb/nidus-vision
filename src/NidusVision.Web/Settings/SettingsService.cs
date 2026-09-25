@@ -43,7 +43,10 @@ public sealed class SettingsService(AppDbContext db, IOptions<StorageOptions> st
     {
         var process = Process.GetCurrentProcess();
         var storageMetrics = GetStorageMetrics();
-        var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.8.2";
+        var informational = Assembly.GetExecutingAssembly()
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion;
+        var version = string.IsNullOrWhiteSpace(informational) ? "1.0.0" : informational.Split('+')[0];
         return new SystemMetricsResponse(
             cpu.Sample(process),
             process.WorkingSet64,
