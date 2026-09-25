@@ -8,14 +8,14 @@ using NidusVision.Data;
 namespace NidusVision.Web.Events;
 
 public sealed record EventResponse(Guid Id, Guid CameraId, string CameraName, DateTimeOffset StartUtc, DateTimeOffset EndUtc, float Confidence, bool HasThumbnail, string? Resolution);
-public sealed record RecordingResponse(Guid Id, Guid CameraId, string CameraName, DateTimeOffset StartUtc, DateTimeOffset EndUtc, long ByteSize, bool HasHuman, bool Available, bool HasThumbnail, string? Resolution);
-internal sealed record RecordingPageRow(Guid Id, Guid CameraId, string CameraName, DateTimeOffset StartUtc, DateTimeOffset EndUtc, long ByteSize, bool HasHuman, string Path, string? ThumbnailPath, string? Resolution);
+public sealed record RecordingResponse(Guid Id, Guid CameraId, string CameraName, DateTimeOffset StartUtc, DateTimeOffset EndUtc, long ByteSize, bool HasHuman, bool Available, bool HasThumbnail, string? Resolution, bool IsActive);
+internal sealed record RecordingPageRow(Guid Id, Guid CameraId, string CameraName, DateTimeOffset StartUtc, DateTimeOffset EndUtc, long ByteSize, bool HasHuman, bool IsFinalized, string Path, string? ThumbnailPath, string? Resolution);
 public sealed record PagedResponse<T>(IReadOnlyList<T> Items, int Page, int PageSize, int TotalCount)
 {
     public int TotalPages => Math.Max(1, (int)Math.Ceiling((double)TotalCount / PageSize));
 }
 
-public sealed class EventLibraryService(AppDbContext db, IOptions<StorageOptions> storage)
+public sealed class EventLibraryService(AppDbContext db, IOptions<StorageOptions> storage, TimeProvider time)
 {
     private const int MaxPageSize = 100;
 
@@ -143,6 +143,7 @@ public sealed class EventLibraryService(AppDbContext db, IOptions<StorageOptions
         int pageSize,
         DateTimeOffset? fromUtc,
         DateTimeOffset? toUtc,
+        bool? hasHuman,
         CancellationToken cancellationToken)
     {
         await IndexUntrackedRecordingsAsync(cancellationToken);
@@ -159,6 +160,10 @@ public sealed class EventLibraryService(AppDbContext db, IOptions<StorageOptions
         {
             query = query.Where(segment => segment.StartUtc < to);
         }
+        if (hasHuman is { } flag)
+        {
+            query = query.Where(segment => segment.HasHuman == flag);
+        }
 
         var totalCount = await query.CountAsync(cancellationToken);
         var rows = await query
@@ -173,22 +178,31 @@ public sealed class EventLibraryService(AppDbContext db, IOptions<StorageOptions
                 segment.EndUtc,
                 segment.ByteSize,
                 segment.HasHuman,
+                segment.IsFinalized,
                 segment.Path,
                 segment.ThumbnailPath,
                 segment.Camera.LastResolution))
             .ToListAsync(cancellationToken);
+        var now = time.GetUtcNow();
         var items = rows
-            .Select(recording => new RecordingResponse(
-                recording.Id,
-                recording.CameraId,
-                recording.CameraName,
-                recording.StartUtc,
-                recording.EndUtc,
-                recording.ByteSize,
-                recording.HasHuman,
-                File.Exists(recording.Path),
-                recording.ThumbnailPath != null && recording.ThumbnailPath != "",
-                recording.Resolution))
+            .Select(recording =>
+            {
+                var available = File.Exists(recording.Path);
+                var isActive = available && !recording.IsFinalized;
+                var endUtc = isActive && now > recording.StartUtc ? now : recording.EndUtc;
+                return new RecordingResponse(
+                    recording.Id,
+                    recording.CameraId,
+                    recording.CameraName,
+                    recording.StartUtc,
+                    endUtc,
+                    DiskFileSize.Of(recording.Path, recording.ByteSize),
+                    recording.HasHuman,
+                    available,
+                    recording.ThumbnailPath != null && recording.ThumbnailPath != "",
+                    recording.Resolution,
+                    isActive);
+            })
             .ToList();
         return new(items, page, pageSize, totalCount);
     }
@@ -247,6 +261,7 @@ public sealed class EventLibraryService(AppDbContext db, IOptions<StorageOptions
                 EndUtc = start.AddSeconds(storage.Value.EffectiveSegmentDurationSeconds),
                 Codec = "copy",
                 ByteSize = info.Length,
+                IsFinalized = true,
             });
             indexedPaths.Add(fullPath);
         }
@@ -311,8 +326,8 @@ internal static class EventEndpoints
         });
 
         var recordings = app.MapGroup("/api/recordings");
-        recordings.MapGet("/", async (Guid? cameraId, DateTimeOffset? fromUtc, DateTimeOffset? toUtc, int? page, int? pageSize, EventLibraryService events, CancellationToken cancellationToken) =>
-            TypedResults.Ok(await events.SearchRecordingsAsync(cameraId, page ?? 1, pageSize ?? 12, fromUtc, toUtc, cancellationToken)));
+        recordings.MapGet("/", async (Guid? cameraId, DateTimeOffset? fromUtc, DateTimeOffset? toUtc, bool? hasHuman, int? page, int? pageSize, EventLibraryService events, CancellationToken cancellationToken) =>
+            TypedResults.Ok(await events.SearchRecordingsAsync(cameraId, page ?? 1, pageSize ?? 12, fromUtc, toUtc, hasHuman, cancellationToken)));
         recordings.MapGet("/{id:guid}/video.mp4", async (Guid id, EventLibraryService events, CancellationToken cancellationToken) =>
         {
             var path = await events.ResolveRecordingPathAsync(id, cancellationToken);

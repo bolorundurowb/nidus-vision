@@ -187,6 +187,9 @@ namespace NidusVision.Data.Migrations
                     b.Property<bool>("HasHuman")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("IsFinalized")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Path")
                         .IsRequired()
                         .HasMaxLength(2048)
@@ -200,6 +203,11 @@ namespace NidusVision.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("IsFinalized");
+
+                    b.HasIndex("Path")
+                        .IsUnique();
 
                     b.HasIndex("CameraId", "StartUtc");
 
