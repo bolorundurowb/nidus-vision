@@ -23,8 +23,8 @@ import { AppIcon } from '../ui/app-icon';
               <input type="range" min="1" max="90" [value]="general()" (input)="general.set(+$any($event.target).value); persist()">
             </label>
             <label>
-              <span>Human detection events <strong>{{ detection() }} days</strong></span>
-              <input type="range" min="7" max="180" [value]="detection()" (input)="detection.set(+$any($event.target).value); persist()">
+              <span>Recordings with detections <strong>{{ detection() }} days</strong></span>
+              <input type="range" min="1" max="180" [value]="detection()" (input)="detection.set(+$any($event.target).value); persist()">
             </label>
             <label>
               <span>Maximum recording storage <strong>{{ storageLimitLabel() }}</strong></span>
@@ -70,12 +70,19 @@ import { AppIcon } from '../ui/app-icon';
         <section class="card pad">
           <h3>Storage allocation</h3>
           <p class="muted">{{ usedLabel() }}</p>
-          <div class="donut" [style.background]="donutGradient()"><div><strong>{{ usedPct() }}%</strong><span class="muted">used</span></div></div>
+          <div class="donut" [style.background]="donutGradient()">
+            <div>
+              @if (unlimited()) {
+                <strong>Unlimited</strong><span class="muted">no storage cap</span>
+              } @else {
+                <strong>{{ usedPct() }}%</strong><span class="muted">of configured max</span>
+              }
+            </div>
+          </div>
           <ul>
-            <li><span>General video</span><strong>{{ generalVideo() }}</strong></li>
-            <li><span>Human events</span><strong>{{ humanEvents() }}</strong></li>
+            <li><span>Recordings</span><strong>{{ generalVideo() }}</strong></li>
             <li><span>System database</span><strong>{{ systemDatabase() }}</strong></li>
-            <li class="free"><span>Free space</span><strong>{{ freeSpace() }}</strong></li>
+            <li class="free"><span>{{ unlimited() ? 'Storage limit' : 'Remaining' }}</span><strong>{{ freeSpace() }}</strong></li>
           </ul>
         </section>
       </div>
@@ -121,12 +128,12 @@ export class SettingsPage {
   protected readonly version = signal('0.8.2');
   protected readonly usedLabel = signal('Storage metrics unavailable');
   protected readonly usedPct = signal(0);
+  protected readonly unlimited = signal(true);
   protected readonly cpu = signal('—');
   protected readonly memory = signal('—');
   protected readonly uptime = signal('—');
   protected readonly startedAt = signal<Date | null>(null);
   protected readonly generalVideo = signal('—');
-  protected readonly humanEvents = signal('—');
   protected readonly systemDatabase = signal('—');
   protected readonly freeSpace = signal('—');
   protected readonly donutGradient = signal('conic-gradient(var(--muted) 0 100%)');
@@ -152,23 +159,28 @@ export class SettingsPage {
       this.cpu.set(`${metrics.cpuPercent.toFixed(0)}%`);
       this.memory.set(`${this.gbValue(metrics.memoryUsedBytes)} / ${this.gbValue(metrics.memoryTotalBytes)} GB`);
       this.setUptime(metrics.uptime);
-      if (metrics.storage.totalBytes > 0) {
-        this.usedPct.set(Math.round((metrics.storage.usedBytes / metrics.storage.totalBytes) * 100));
-        this.usedLabel.set(`${this.gb(metrics.storage.usedBytes)} of ${this.gb(metrics.storage.totalBytes)} used`);
-        const total = metrics.storage.totalBytes;
-        const g = (metrics.storage.generalBytes / total) * 100;
-        const d = (metrics.storage.detectionBytes / total) * 100;
-        const db = (metrics.storage.databaseBytes / total) * 100;
-        const gEnd = g;
-        const dEnd = g + d;
-        const dbEnd = dEnd + db;
-        this.donutGradient.set(
-          `conic-gradient(#3b82f6 0 ${gEnd}%, #f97316 ${gEnd}% ${dEnd}%, #94a3b8 ${dEnd}% ${dbEnd}%, var(--muted) ${dbEnd}% 100%)`,
-        );
-        this.generalVideo.set(this.gb(metrics.storage.generalBytes));
-        this.humanEvents.set(this.gb(metrics.storage.detectionBytes));
+      const configuredMax = settings.maxStorageBytes;
+      this.unlimited.set(configuredMax === null);
+      if (metrics.storage.usedBytes >= 0) {
+        const total = configuredMax ?? 0;
+        this.usedPct.set(total > 0 ? Math.min(100, Math.round((metrics.storage.usedBytes / total) * 100)) : 0);
+        this.usedLabel.set(configuredMax === null
+          ? `${this.gb(metrics.storage.usedBytes)} used · unlimited`
+          : `${this.gb(metrics.storage.usedBytes)} of ${this.gb(configuredMax)} configured`);
+        if (configuredMax === null) {
+          this.donutGradient.set('conic-gradient(var(--muted) 0 100%)');
+        } else {
+          const g = (metrics.storage.recordingBytes / total) * 100;
+          const db = (metrics.storage.databaseBytes / total) * 100;
+          const gEnd = Math.min(100, g);
+          const dbEnd = Math.min(100, gEnd + db);
+          this.donutGradient.set(
+            `conic-gradient(#3b82f6 0 ${gEnd}%, #94a3b8 ${gEnd}% ${dbEnd}%, var(--muted) ${dbEnd}% 100%)`,
+          );
+        }
+        this.generalVideo.set(this.gb(metrics.storage.recordingBytes));
         this.systemDatabase.set(this.gb(metrics.storage.databaseBytes));
-        this.freeSpace.set(this.gb(Math.max(0, total - metrics.storage.usedBytes)));
+        this.freeSpace.set(configuredMax === null ? 'Unlimited' : this.gb(Math.max(0, configuredMax - metrics.storage.usedBytes)));
       }
     } catch {
       /* mock */

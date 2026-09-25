@@ -15,7 +15,6 @@ export interface CameraDto {
   hasPassword: boolean;
   transport: string;
   status: string;
-  roiJson: string | null;
   resolution: string | null;
   fps: number | null;
   bitrate: string | null;
@@ -31,7 +30,6 @@ export interface CameraWrite {
   username: string | null;
   password: string | null;
   transport: string;
-  roiJson: string | null;
   clearCredentials?: boolean;
 }
 
@@ -59,21 +57,20 @@ export function cameraWrite(input: {
   name: string;
   url: string;
   location?: string;
+  enabled?: boolean;
   username?: string | null;
   password?: string | null;
-  roiJson?: string | null;
   clearCredentials?: boolean;
 }): CameraWrite {
   return {
     name: input.name.trim() || 'New Camera',
-    location: input.location?.trim() || 'Unassigned',
-    enabled: true,
+    location: input.location === 'Exterior' ? 'Exterior' : 'Interior',
+    enabled: input.enabled ?? true,
     mainRtspUrl: input.url.trim() || 'rtsp://192.168.1.20:554/stream',
     subRtspUrl: null,
     username: blankToNull(input.username),
     password: blankToNull(input.password),
     transport: 'tcp',
-    roiJson: input.roiJson ?? null,
     clearCredentials: input.clearCredentials ?? false,
   };
 }
@@ -121,8 +118,8 @@ export class CameraApi {
       bitrate: dto.bitrate ?? null,
       retention: dto.retention ?? null,
       location: dto.location,
+      enabled: dto.enabled,
       mainRtspUrl: redactRtspUrl(dto.mainRtspUrl, dto.hasPassword),
-      roiJson: dto.roiJson,
       hasCredentials: dto.hasPassword,
     };
   }
