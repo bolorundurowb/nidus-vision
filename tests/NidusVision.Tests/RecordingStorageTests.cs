@@ -28,6 +28,10 @@ public sealed class RecordingStorageTests : IDisposable
 
         options.EffectiveSegmentDurationSeconds.Must().Be(900);
         AssertArgumentValue(startInfo.ArgumentList, "-segment_time", "900");
+        AssertArgumentValue(
+            startInfo.ArgumentList,
+            "-segment_format_options",
+            "movflags=+frag_keyframe+empty_moov+default_base_moof");
         AssertArgumentValue(startInfo.ArgumentList, "-strftime", "1");
         AssertArgumentValue(startInfo.ArgumentList, "-timeout", "10000000");
         startInfo.ArgumentList.Must().NotContain("-break_non_keyframes");
@@ -88,12 +92,11 @@ public sealed class RecordingStorageTests : IDisposable
     }
 
     [Fact]
-    public async Task DetectionClipIsStoredAndIndexedOutsideRecordings()
+    public async Task DetectionIntervalMarksOverlappingRecordingWithoutCreatingAClip()
     {
         // Arrange
         var root = _directory.Path;
         var recordings = Path.Combine(root, "recordings");
-        var events = Path.Combine(root, "events");
         Directory.CreateDirectory(recordings);
         var recordingPath = Path.Combine(recordings, "segment.mp4");
         await File.WriteAllBytesAsync(recordingPath, [1, 2, 3, 4]);
@@ -117,15 +120,9 @@ public sealed class RecordingStorageTests : IDisposable
         });
         await db.SaveChangesAsync();
 
-        var store = new EventArtifactStore(Options.Create(new StorageOptions
-        {
-            RecordingsDirectory = recordings,
-            EventsDirectory = events,
-        }));
         // Act
-        await DetectionHostedService.PersistDetectionWithArtifactsAsync(
+        var detection = await DetectionHostedService.PersistDetectionIntervalAsync(
             db,
-            store,
             camera.Id,
             0.95f,
             start.AddMinutes(1),
@@ -133,9 +130,7 @@ public sealed class RecordingStorageTests : IDisposable
             CancellationToken.None);
 
         // Assert
-        var detection = await db.DetectionEvents.SingleAsync();
-        detection.ClipPath.Must().NotBeNull();
-        Path.GetFullPath(detection.ClipPath!).Must().Be(Path.GetFullPath(recordingPath));
+        (await db.RecordingSegments.SingleAsync()).HasHuman.Must().BeTrue();
     }
 
     [Fact]
@@ -159,12 +154,12 @@ public sealed class RecordingStorageTests : IDisposable
         var path = Path.Combine(directory, "20260923T183000.mp4");
         await File.WriteAllBytesAsync(path, [1, 2, 3, 4]);
 
-        var library = new EventLibraryService(db, Options.Create(new StorageOptions
+        var library = new RecordingLibraryService(db, Options.Create(new StorageOptions
         {
             RecordingsDirectory = recordings,
         }), TimeProvider.System);
         // Act
-        var result = await library.SearchRecordingsAsync(null, 1, 12, null, null, null, CancellationToken.None);
+        var result = await library.SearchRecordingsAsync(null, null, 1, 12, null, null, null, CancellationToken.None);
 
         // Assert
         result.Items.Must().HaveCount(1);
@@ -189,13 +184,13 @@ public sealed class RecordingStorageTests : IDisposable
         await using var db = new AppDbContext(dbOptions);
         await db.Database.EnsureCreatedAsync();
 
-        var library = new EventLibraryService(db, Options.Create(new StorageOptions
+        var library = new RecordingLibraryService(db, Options.Create(new StorageOptions
         {
             RecordingsDirectory = Path.Combine(root, "missing"),
         }), TimeProvider.System);
 
         // Act
-        var result = await library.SearchRecordingsAsync(null, 1, 12, null, null, null, CancellationToken.None);
+        var result = await library.SearchRecordingsAsync(null, null, 1, 12, null, null, null, CancellationToken.None);
 
         // Assert
         result.Items.Must().BeEmpty();
@@ -230,11 +225,11 @@ public sealed class RecordingStorageTests : IDisposable
         });
         await db.SaveChangesAsync();
 
-        var library = new EventLibraryService(db, Options.Create(new StorageOptions
+        var library = new RecordingLibraryService(db, Options.Create(new StorageOptions
         {
             RecordingsDirectory = recordings,
         }), TimeProvider.System);
-        var result = await library.SearchRecordingsAsync(null, 1, 12, null, null, null, CancellationToken.None);
+        var result = await library.SearchRecordingsAsync(null, null, 1, 12, null, null, null, CancellationToken.None);
 
         result.Items.Must().HaveCount(1);
         result.Items[0].IsActive.Must().BeTrue();
@@ -261,14 +256,8 @@ public sealed class RecordingStorageTests : IDisposable
         db.Cameras.Add(camera);
         await db.SaveChangesAsync();
 
-        var store = new EventArtifactStore(Options.Create(new StorageOptions
-        {
-            RecordingsDirectory = recordings,
-            EventsDirectory = Path.Combine(root, "events"),
-        }));
-        await DetectionHostedService.PersistDetectionWithArtifactsAsync(
+        await DetectionHostedService.PersistDetectionIntervalAsync(
             db,
-            store,
             camera.Id,
             0.9f,
             start.AddSeconds(5),

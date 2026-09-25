@@ -1,6 +1,6 @@
 # Nidus Vision
 
-Lightweight self-hosted NVR: .NET 10 API + Angular 21 UI, SQLite WAL, FFmpeg pass-through recording, MSE live view, and ONNX person detection (CPU).
+Lightweight self-hosted NVR: .NET 10 API + Angular 21 UI, SQLite WAL, FFmpeg pass-through recording, MSE live view, and GPU-first ONNX person detection.
 
 ## Install (Docker)
 
@@ -16,16 +16,9 @@ Data lives in the `nidus-data` volume; recordings in `nidus-recordings`. Camera 
 
 Person detection uses `models/person.onnx` (copied into the image when present) or `NIDUS_PERSON_MODEL`. The ingest FFmpeg process samples a low-FPS RGB frame from the same RTSP connection used for 15-minute recordings; detection runs in a background service so a slow model cannot stall capture.
 
-Intel iGPU / VAAPI on a Linux host (optional hardware video decode, not required for person detection) — uncomment in `docker/docker-compose.yml`:
+The Docker image is built with the OpenVINO execution provider and maps `/dev/dri` into the container for Intel iGPU inference. If OpenVINO cannot initialize the GPU, Nidus Vision logs the failure and retries on CPU. Ensure the Docker host exposes `/dev/dri`; remove the `devices` entry only when intentionally running CPU-only.
 
-```yaml
-devices:
-  - /dev/dri/renderD128:/dev/dri/renderD128
-  - /dev/dri/card0:/dev/dri/card0
-group_add: ["44", "109"]
-environment:
-  LIBVA_DRIVER_NAME: iHD
-```
+The legacy `nidus-events` volume is mounted for one upgrade so old extracted event clips and thumbnails can be deleted. After one successful start, that volume and its `Storage__EventsDirectory` compatibility setting can be removed.
 
 ## Develop
 
@@ -34,7 +27,28 @@ dotnet tool restore
 dotnet run --project src/NidusVision.Web
 ```
 
-Requires .NET 10 SDK, Node.js 22+, and FFmpeg on `PATH` (or `FFMPEG_PATH`) for ingest, probe, and live. Production installs do not need these on the host; they come from the Docker image.
+Requires .NET 10 SDK, Node.js 22+, and FFmpeg on `PATH` (or `FFMPEG_PATH`) for ingest, probe, and live. Windows development builds use DirectML first and fall back to CPU. Production installs do not need these on the host; they come from the Docker image.
+
+Execution-provider builds are mutually exclusive because ONNX Runtime variants contain conflicting native libraries:
+
+```bash
+dotnet test NidusVision.slnx
+dotnet run --project src/NidusVision.Web
+# Windows default: DirectML then CPU
+
+dotnet test NidusVision.slnx -p:OnnxRuntimeProvider=Cpu
+dotnet run --project src/NidusVision.Web -p:OnnxRuntimeProvider=Cpu
+
+dotnet publish src/NidusVision.Web/NidusVision.Web.csproj -c Release -p:OnnxRuntimeProvider=OpenVino
+# Docker default: OpenVINO GPU via /dev/dri, then CPU
+
+dotnet publish src/NidusVision.Web/NidusVision.Web.csproj -c Release -p:OnnxRuntimeProvider=Cuda
+# optional NVIDIA CUDA then CPU
+
+dotnet publish src/NidusVision.Web/NidusVision.Web.csproj -c Release -p:OnnxRuntimeProvider=DirectML
+```
+
+`group_add` GIDs `44`/`109` in `docker/docker-compose.yml` should match the host `video`/`render` groups (`ls -l /dev/dri`).
 
 API: http://localhost:8080 (`/health`, `/api/...`).
 

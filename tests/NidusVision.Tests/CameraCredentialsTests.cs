@@ -49,5 +49,5 @@ public sealed class CameraCredentialsTests : SqliteTestBase
         new(db, new EphemeralDataProtectionProvider(), new RtspProbe(), TimeProvider.System);
 
     private static CameraWriteRequest Write(string name, string? username, string? password, bool clear = false) =>
-        new(name, "Yard", true, "rtsp://192.168.1.20/stream", null, username, password, "tcp", null, clear);
+        new(name, "Interior", true, "rtsp://192.168.1.20/stream", null, username, password, "tcp", clear);
 }

@@ -14,22 +14,6 @@ public sealed class VideoThumbnailExtractorTests
     }
 
     [Fact]
-    public void EventThumbnailLivesBesideTheClipUnderTheEventsDirectory()
-    {
-        // Arrange
-        using var directory = new TestDirectory("nidus-thumbs");
-        var cameraId = Guid.Parse("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-        var eventId = Guid.Parse("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
-        var start = new DateTimeOffset(2026, 9, 23, 18, 30, 0, TimeSpan.Zero);
-
-        // Act
-        var path = VideoThumbnailExtractor.DestinationForEvent(directory.Path, cameraId, start, eventId);
-
-        // Assert
-        path.Must().Be(Path.Combine(directory.Path, cameraId.ToString("N"), "2026", "09", "23", $"{eventId:N}.jpg"));
-    }
-
-    [Fact]
     public void NeedsThumbnailWhenPathIsMissingOrFileIsGone()
     {
         VideoThumbnailExtractor.NeedsThumbnail(null).Must().BeTrue();
@@ -53,40 +37,16 @@ public sealed class VideoThumbnailExtractorTests
     }
 
     [Fact]
-    public async Task SourceIsNotReadyUntilTheFileStopsGrowing()
+    public async Task GrowingFragmentedSourceIsReadyImmediately()
     {
         // Arrange
         using var directory = new TestDirectory("nidus-thumbs");
         var path = directory.GetPath("recording.mp4");
         await File.WriteAllBytesAsync(path, [1, 2, 3, 4]);
-        File.SetLastWriteTimeUtc(path, DateTime.UtcNow);
-        var later = new FixedTime(DateTimeOffset.UtcNow.AddSeconds(11));
-
-        // Act
-        var readyImmediately = VideoThumbnailExtractor.IsSourceReady(path, TimeProvider.System);
-        var readyLater = VideoThumbnailExtractor.IsSourceReady(path, later);
+        var ready = VideoThumbnailExtractor.IsSourceReady(path);
 
         // Assert
-        readyImmediately.Must().BeFalse();
-        readyLater.Must().BeTrue();
-    }
-
-    [Fact]
-    public void EventClipSeeksToTheDetectionMoment()
-    {
-        var detection = new DetectionEvent
-        {
-            Id = Guid.Parse("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
-            StartUtc = DateTimeOffset.Parse("2026-09-23T12:00:15Z"),
-            EndUtc = DateTimeOffset.Parse("2026-09-23T12:00:20Z"),
-        };
-        var clip = Path.Combine("events", $"{detection.Id:N}.mp4");
-
-        VideoThumbnailExtractor.SeekForEvent(clip, detection, null).Must().Be(TimeSpan.FromSeconds(15));
-        VideoThumbnailExtractor.SeekForEvent(
-            "segment.mp4",
-            detection,
-            DateTimeOffset.Parse("2026-09-23T12:00:00Z")).Must().Be(TimeSpan.FromSeconds(15));
+        ready.Must().BeTrue();
     }
 
     [Fact]
@@ -114,9 +74,9 @@ public sealed class VideoThumbnailExtractorTests
         using var directory = new TestDirectory("nidus-thumbs");
         var path = directory.GetPath("thumbnail.jpg");
         await File.WriteAllBytesAsync(path, [1]);
-        var missing = new DetectionEvent { ThumbnailPath = null };
-        var present = new DetectionEvent { ThumbnailPath = path };
-        var extra = new DetectionEvent { ThumbnailPath = "" };
+        var missing = new RecordingSegment { Path = "missing.mp4", ThumbnailPath = null };
+        var present = new RecordingSegment { Path = "present.mp4", ThumbnailPath = path };
+        var extra = new RecordingSegment { Path = "extra.mp4", ThumbnailPath = "" };
 
         // Act
         var selected = ThumbnailWorker.SelectMissing([present, missing, extra], e => e.ThumbnailPath, limit: 1);
@@ -126,8 +86,4 @@ public sealed class VideoThumbnailExtractorTests
         selected[0].Must().Be(missing);
     }
 
-    private sealed class FixedTime(DateTimeOffset utcNow) : TimeProvider
-    {
-        public override DateTimeOffset GetUtcNow() => utcNow;
-    }
 }
