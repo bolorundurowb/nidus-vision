@@ -52,11 +52,12 @@ public sealed class EventResponseTests : SqliteTestBase
         await db.SaveChangesAsync();
 
         // Act
-        var result = await CreateService(db).SearchRecordingsAsync(null, 1, 12, null, null, CancellationToken.None);
+        var result = await CreateService(db).SearchRecordingsAsync(null, 1, 12, null, null, null, CancellationToken.None);
 
         // Assert
         result.Items.Must().HaveCount(1);
         result.Items[0].HasThumbnail.Must().BeTrue();
+        result.Items[0].IsActive.Must().BeFalse();
         typeof(RecordingResponse).GetProperty("ThumbnailPath").VerifyNullable().BeNull();
     }
 
@@ -64,6 +65,6 @@ public sealed class EventResponseTests : SqliteTestBase
         new(db, Options.Create(new StorageOptions
         {
             RecordingsDirectory = Path.Combine(Path.GetTempPath(), "nidus-tests", Guid.NewGuid().ToString("N")),
-        }));
+        }), TimeProvider.System);
 
 }
