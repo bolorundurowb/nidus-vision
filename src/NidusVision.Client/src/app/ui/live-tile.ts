@@ -1,10 +1,12 @@
 import { afterNextRender, Component, DestroyRef, ElementRef, inject, input, signal, viewChild } from '@angular/core';
 import { CameraItem, fpsLabel, statLabel } from '../models';
+import { downloadVideoFrame } from '../video-frame';
+import { AppIcon } from './app-icon';
 import { StatusPill } from './status-pill';
 
 @Component({
   selector: 'app-live-tile',
-  imports: [StatusPill],
+  imports: [StatusPill, AppIcon],
   template: `
     <article class="feed" [class.off]="camera().status === 'offline' && !!error()">
       <div class="video">
@@ -15,7 +17,12 @@ import { StatusPill } from './status-pill';
         <div class="top"><span class="chip">{{ camera().name }}</span><app-status-pill [status]="camera().status" /></div>
         <div class="bot">
           <span>{{ statLabel(camera().resolution) }} · {{ fpsLabel(camera().fps) }}</span>
-          <span>Live</span>
+          <span class="live-meta">
+            <button type="button" class="shot" aria-label="Download screenshot" title="Download screenshot" (click)="snapshot()">
+              <app-icon name="camera" />
+            </button>
+            Live · {{ clock() }}
+          </span>
         </div>
       </div>
     </article>
@@ -27,8 +34,16 @@ import { StatusPill } from './status-pill';
     .feed.off { filter: grayscale(1); opacity: 0.5; }
     .top, .bot { position: absolute; left: 0.75rem; right: 0.75rem; color: #fff; font-size: 11px; }
     .top { top: 0.75rem; }
-    .bot { bottom: 0.75rem; display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; }
+    .bot { bottom: 0.75rem; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
     .bot span { white-space: nowrap; }
+    .live-meta { display: inline-flex; align-items: center; gap: 0.4rem; }
+    .shot {
+      display: inline-grid; place-items: center; width: 1.6rem; height: 1.6rem; padding: 0;
+      border: 0; border-radius: 999px; color: #fff; background: rgb(0 0 0 / 0.45); cursor: pointer;
+      opacity: 0; pointer-events: none; transition: opacity 0.15s ease;
+    }
+    .video:hover .shot, .shot:focus-visible { opacity: 1; pointer-events: auto; }
+    .shot app-icon { width: 0.9rem; height: 0.9rem; }
     .chip { background: rgb(0 0 0 / 0.5); padding: 0.2rem 0.5rem; border-radius: 0.35rem; }
     .error {
       position: absolute; inset: 2.75rem 1rem; margin: 0; display: grid; place-content: center;
@@ -39,6 +54,7 @@ import { StatusPill } from './status-pill';
 export class LiveTile {
   readonly camera = input.required<CameraItem>();
   protected readonly error = signal<string | null>(null);
+  protected readonly clock = signal(formatClock(new Date()));
   protected readonly statLabel = statLabel;
   protected readonly fpsLabel = fpsLabel;
   private readonly video = viewChild<ElementRef<HTMLVideoElement>>('video');
@@ -46,10 +62,23 @@ export class LiveTile {
   private objectUrl: string | null = null;
   private media: MediaSource | null = null;
   private reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+  private clockHandle?: ReturnType<typeof setInterval>;
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => void this.teardown());
+    this.clockHandle = setInterval(() => this.clock.set(formatClock(new Date())), 1000);
+    inject(DestroyRef).onDestroy(() => {
+      if (this.clockHandle) {
+        clearInterval(this.clockHandle);
+      }
+      void this.teardown();
+    });
     afterNextRender(() => void this.attach());
+  }
+
+  protected snapshot(): void {
+    if (!downloadVideoFrame(this.video()?.nativeElement, this.camera().name, new Date())) {
+      this.error.set('Could not capture a screenshot from this camera yet.');
+    }
   }
 
   private async attach(): Promise<void> {
@@ -179,4 +208,9 @@ export class LiveTile {
     }
     return `Live stream unavailable (HTTP ${response.status}).`;
   }
+}
+
+function formatClock(at: Date): string {
+  const pad = (value: number) => value.toString().padStart(2, '0');
+  return `${pad(at.getHours())}:${pad(at.getMinutes())}:${pad(at.getSeconds())}`;
 }
