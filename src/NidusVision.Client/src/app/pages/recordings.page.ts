@@ -8,6 +8,7 @@ import { downloadVideoFrame } from '../video-frame';
 @Component({
   selector: 'app-recordings-page',
   imports: [DatePipe, DecimalPipe, AppIcon],
+  host: { '(document:keydown.escape)': 'closePlayer()' },
   template: `
     <div class="page">
       <div>
@@ -97,9 +98,12 @@ import { downloadVideoFrame } from '../video-frame';
           }
           <div class="player-bar">
             <div><strong>{{ recording.cameraName }}</strong><span>{{ recording.location }} · {{ recording.startUtc | date:'medium' }}</span></div>
-            @if (recording.available) {
-              <button type="button" class="btn outline sm" (click)="download(recording)"><app-icon name="download" />Download</button>
-            }
+            <div class="player-actions">
+              @if (recording.available) {
+                <button type="button" class="btn outline sm" (click)="download(recording)"><app-icon name="download" />Download</button>
+              }
+              <button type="button" class="btn outline sm" (click)="closePlayer()"><app-icon name="x" />Close</button>
+            </div>
           </div>
         </section>
       }
@@ -149,7 +153,10 @@ import { downloadVideoFrame } from '../video-frame';
     .filters { display: flex; flex-wrap: wrap; align-items: end; gap: .65rem; padding: .75rem; }
     .filters label { display: grid; gap: .25rem; color: var(--muted-foreground); font-size: .68rem; font-weight: 600; text-transform: uppercase; }
     .filters select, .filters input { min-height: 2.25rem; border: 1px solid var(--border); border-radius: .45rem; padding: .35rem .65rem; background: var(--card); color: var(--foreground); font: inherit; text-transform: none; }
-    .recordings { grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); }
+    .recordings { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    @media (max-width: 80rem) { .recordings { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    @media (max-width: 64rem) { .recordings { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 40rem) { .recordings { grid-template-columns: 1fr; } }
     .recording { cursor: pointer; }
     .thumb { aspect-ratio: 16/9; background: linear-gradient(#0f172a, #020617); position: relative; overflow: hidden; }
     .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -182,6 +189,7 @@ import { downloadVideoFrame } from '../video-frame';
     .legend { margin-left: auto; display: inline-flex; align-items: center; gap: .35rem; }
     .legend i { width: .65rem; height: .65rem; border-radius: .15rem; background: #f97316; }
     .player-bar { margin-top: .75rem; }
+    .player-actions { display: flex; align-items: center; gap: .5rem; }
     .player-bar strong, .player-bar span { display: block; }
     .player-bar span { margin-top: .2rem; color: var(--muted-foreground); font-size: .75rem; }
     .status { padding: .75rem 0; }
@@ -194,7 +202,7 @@ export class RecordingsPage {
   private readonly api = inject(RecordingApi);
   protected readonly store = inject(CameraStore);
   private readonly video = viewChild<ElementRef<HTMLVideoElement>>('video');
-  private readonly pageSize = 12;
+  private readonly pageSize = 20;
   protected readonly recordings = signal<RecordingDto[]>([]);
   protected readonly selected = signal<RecordingDto | null>(null);
   protected readonly loading = signal(true);
@@ -239,6 +247,14 @@ export class RecordingsPage {
   protected setPage(page: number) { this.page.set(page); this.selected.set(null); void this.load(); }
   protected select(recording: RecordingDto) {
     this.playbackError.set(null); this.currentSeconds.set(0); this.durationSeconds.set(0); this.playing.set(false); this.selected.set(recording);
+  }
+  protected closePlayer() {
+    this.video()?.nativeElement.pause();
+    this.selected.set(null);
+    this.playing.set(false);
+    this.playbackError.set(null);
+    this.currentSeconds.set(0);
+    this.durationSeconds.set(0);
   }
   protected markThumbnailFailed(id: string) { this.thumbnailFailed.update(failed => new Set(failed).add(id)); }
   protected download(recording: RecordingDto) { window.open(`/api/recordings/${recording.id}/video.mp4`, '_blank'); }
