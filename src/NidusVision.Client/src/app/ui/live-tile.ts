@@ -27,7 +27,8 @@ import { StatusPill } from './status-pill';
     .feed.off { filter: grayscale(1); opacity: 0.5; }
     .top, .bot { position: absolute; left: 0.75rem; right: 0.75rem; color: #fff; font-size: 11px; }
     .top { top: 0.75rem; }
-    .bot { bottom: 0.75rem; }
+    .bot { bottom: 0.75rem; display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; }
+    .bot span { white-space: nowrap; }
     .chip { background: rgb(0 0 0 / 0.5); padding: 0.2rem 0.5rem; border-radius: 0.35rem; }
     .error {
       position: absolute; inset: 2.75rem 1rem; margin: 0; display: grid; place-content: center;

@@ -63,7 +63,7 @@ a { color: inherit; text-decoration: none; }
 .page { padding: 1.5rem 2rem; display: flex; flex-direction: column; gap: 1.25rem; }
 .eyebrow { font-size: 0.75rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--primary); margin: 0; }
 h2.page-title { margin: 0.25rem 0 0; font-size: 1.5rem; font-weight: 600; letter-spacing: -0.02em; }
-.muted { color: var(--muted-foreground); font-size: 0.875rem; }
+.muted { color: var(--muted-foreground); font-size: 0.75rem; }
 .grid { display: grid; gap: 1rem; }
 .input { width: 100%; border: 1px solid var(--border); background: var(--background); color: var(--foreground); border-radius: 0.5rem; padding: 0.5rem 0.75rem; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8125rem; }

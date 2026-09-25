@@ -10,7 +10,7 @@ import { AppIcon } from '../ui/app-icon';
     <div class="page">
       <div>
         <p class="eyebrow">Event player & library</p>
-        <h2 class="page-title">Events</h2>
+        <h2 class="page-title">Library</h2>
         <p class="muted">Find and review recorded moments across your cameras.</p>
       </div>
       <div class="card filters">
