@@ -446,7 +446,7 @@ public sealed class CameraIngestHostedService(
         RecordingSegment segment,
         CancellationToken cancellationToken)
     {
-        var detections = await db.DetectionEvents
+        var detections = await db.DetectionIntervals
             .Where(detection => detection.CameraId == segment.CameraId)
             .ToListAsync(cancellationToken);
         var overlapping = detections
@@ -458,31 +458,6 @@ public sealed class CameraIngestHostedService(
         }
 
         segment.HasHuman = true;
-        foreach (var detection in overlapping)
-        {
-            var ids = ParseIds(detection.SegmentIdsJson);
-            if (ids.Add(segment.Id))
-            {
-                detection.SegmentIdsJson = System.Text.Json.JsonSerializer.Serialize(ids);
-            }
-        }
-    }
-
-    private static HashSet<Guid> ParseIds(string? json)
-    {
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            return [];
-        }
-
-        try
-        {
-            return System.Text.Json.JsonSerializer.Deserialize<HashSet<Guid>>(json) ?? [];
-        }
-        catch (System.Text.Json.JsonException)
-        {
-            return [];
-        }
     }
 
     private async Task MarkOfflineAsync(Guid cameraId)

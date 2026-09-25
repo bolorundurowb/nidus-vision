@@ -1,17 +1,12 @@
 using System.Text.Json;
-using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using NidusVision.Core.Cameras;
 using NidusVision.Core.Inference;
 using NidusVision.Core.Models;
-using NidusVision.Core.Roi;
 using NidusVision.Data;
 using NidusVision.Inference;
-using NidusVision.Web.Events;
-using NidusVision.Web.Hubs;
 
 namespace NidusVision.Web.Inference;
 
@@ -19,8 +14,6 @@ public sealed class DetectionHostedService(
     IServiceScopeFactory scopes,
     IHumanDetector detector,
     DetectionFrameBroker frames,
-    EventArtifactStore eventArtifacts,
-    IHubContext<DetectionHub> alerts,
     ILogger<DetectionHostedService> logger) : BackgroundService
 {
     private readonly DetectionPresenceTracker _presence = new();
@@ -66,7 +59,7 @@ public sealed class DetectionHostedService(
     {
         var camera = await db.Cameras.AsNoTracking()
             .Where(c => c.Id == frame.CameraId)
-            .Select(c => new { c.Id, c.Name, c.RoiJson })
+            .Select(c => new { c.Id })
             .FirstOrDefaultAsync(cancellationToken);
         if (camera is null)
         {
@@ -80,7 +73,6 @@ public sealed class DetectionHostedService(
             frame.SourceWidth,
             frame.SourceHeight,
             threshold);
-        boxes = FilterRoi(boxes, camera.RoiJson, frame.SourceWidth, frame.SourceHeight);
         var update = _presence.Observe(frame.CameraId, boxes, frame.CapturedAt);
         if (update.Kind is PresenceKind.None)
         {
@@ -93,37 +85,15 @@ public sealed class DetectionHostedService(
                 db,
                 update.EventId,
                 frame.CameraId,
-                camera.Name,
                 update.Confidence,
                 update.StartUtc,
                 update.EndUtc,
                 update.Boxes,
-                alert: true,
                 cancellationToken);
             return;
         }
 
         await UpdateDetectionAsync(db, update, cancellationToken);
-    }
-
-    internal static IReadOnlyList<BoundingBox> FilterRoi(
-        IReadOnlyList<BoundingBox> boxes,
-        string? roiJson,
-        int sourceWidth,
-        int sourceHeight)
-    {
-        var polygon = RoiJson.Parse(roiJson);
-        if (polygon.Count < 3 || sourceWidth <= 0 || sourceHeight <= 0)
-        {
-            return boxes;
-        }
-
-        return [.. boxes.Where(box => RoiGeometry.BoxIntersectsRoi(
-            polygon,
-            box.X / sourceWidth,
-            box.Y / sourceHeight,
-            box.Width / sourceWidth,
-            box.Height / sourceHeight))];
     }
 
     public async Task PersistDetectionAsync(
@@ -134,20 +104,14 @@ public sealed class DetectionHostedService(
         DateTimeOffset end,
         CancellationToken cancellationToken)
     {
-        var cameraName = await db.Cameras.AsNoTracking()
-            .Where(c => c.Id == cameraId)
-            .Select(c => c.Name)
-            .FirstOrDefaultAsync(cancellationToken) ?? "Camera";
         await PersistDetectionAsync(
             db,
             Guid.CreateVersion7(),
             cameraId,
-            cameraName,
             confidence,
             start,
             end,
             [],
-            alert: true,
             cancellationToken);
     }
 
@@ -155,17 +119,14 @@ public sealed class DetectionHostedService(
         AppDbContext db,
         Guid eventId,
         Guid cameraId,
-        string cameraName,
         float confidence,
         DateTimeOffset start,
         DateTimeOffset end,
         IReadOnlyList<BoundingBox> boxes,
-        bool alert,
         CancellationToken cancellationToken)
     {
-        var detection = await PersistDetectionWithArtifactsAsync(
+        await PersistDetectionIntervalAsync(
             db,
-            eventArtifacts,
             cameraId,
             confidence,
             start,
@@ -173,20 +134,11 @@ public sealed class DetectionHostedService(
             boxes,
             eventId,
             cancellationToken);
-        if (!alert)
-        {
-            return;
-        }
-
-        await alerts.Clients.All.SendAsync(
-            "alert",
-            new DetectionAlert(detection.Id, cameraId, cameraName, confidence, start),
-            cancellationToken);
     }
 
     private static async Task UpdateDetectionAsync(AppDbContext db, PresenceUpdate update, CancellationToken cancellationToken)
     {
-        var detection = await db.DetectionEvents.FirstOrDefaultAsync(e => e.Id == update.EventId, cancellationToken);
+        var detection = await db.DetectionIntervals.FirstOrDefaultAsync(e => e.Id == update.EventId, cancellationToken);
         if (detection is null)
         {
             return;
@@ -203,17 +155,15 @@ public sealed class DetectionHostedService(
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    public static async Task<DetectionEvent> PersistDetectionWithArtifactsAsync(
+    public static async Task<DetectionInterval> PersistDetectionIntervalAsync(
         AppDbContext db,
-        EventArtifactStore eventArtifacts,
         Guid cameraId,
         float confidence,
         DateTimeOffset start,
         DateTimeOffset end,
         CancellationToken cancellationToken) =>
-        await PersistDetectionWithArtifactsAsync(
+        await PersistDetectionIntervalAsync(
             db,
-            eventArtifacts,
             cameraId,
             confidence,
             start,
@@ -222,9 +172,8 @@ public sealed class DetectionHostedService(
             Guid.CreateVersion7(),
             cancellationToken);
 
-    public static async Task<DetectionEvent> PersistDetectionWithArtifactsAsync(
+    public static async Task<DetectionInterval> PersistDetectionIntervalAsync(
         AppDbContext db,
-        EventArtifactStore eventArtifacts,
         Guid cameraId,
         float confidence,
         DateTimeOffset start,
@@ -233,7 +182,7 @@ public sealed class DetectionHostedService(
         Guid eventId,
         CancellationToken cancellationToken)
     {
-        var detection = new DetectionEvent
+        var detection = new DetectionInterval
         {
             Id = eventId,
             CameraId = cameraId,
@@ -242,20 +191,8 @@ public sealed class DetectionHostedService(
             Confidence = confidence,
             BoundingBoxJson = boxes.Count == 0 ? null : JsonSerializer.Serialize(boxes),
         };
-        db.DetectionEvents.Add(detection);
+        db.DetectionIntervals.Add(detection);
         await MarkOverlappingSegmentsAsync(db, detection, cancellationToken);
-
-        var source = await db.RecordingSegments
-            .Where(segment => segment.CameraId == cameraId)
-            .ToListAsync(cancellationToken);
-        var path = source
-            .Where(segment => File.Exists(segment.Path) && DetectionOverlap.Overlaps(segment.StartUtc, segment.EndUtc, start, end))
-            .OrderBy(segment => segment.StartUtc)
-            .FirstOrDefault();
-        if (path is not null)
-        {
-            detection.ClipPath = await eventArtifacts.SaveClipAsync(detection, path.Path, path.StartUtc, cancellationToken);
-        }
 
         await db.SaveChangesAsync(cancellationToken);
         return detection;
@@ -263,7 +200,7 @@ public sealed class DetectionHostedService(
 
     private static async Task MarkOverlappingSegmentsAsync(
         AppDbContext db,
-        DetectionEvent detection,
+        DetectionInterval detection,
         CancellationToken cancellationToken)
     {
         var segments = await db.RecordingSegments.Where(s => s.CameraId == detection.CameraId).ToListAsync(cancellationToken);
@@ -276,6 +213,5 @@ public sealed class DetectionHostedService(
             segment.HasHuman = true;
         }
 
-        detection.SegmentIdsJson = JsonSerializer.Serialize(overlapping.Select(s => s.Id));
     }
 }

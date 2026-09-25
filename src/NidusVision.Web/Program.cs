@@ -13,6 +13,7 @@ using NidusVision.Web.Timeline;
 using NidusVision.Web.Settings;
 
 var builder = WebApplication.CreateBuilder(args);
+var legacyEventsDirectory = builder.Configuration["Storage:EventsDirectory"] ?? "events";
 
 builder.Services.AddNidusData(builder.Configuration);
 builder.Services.AddNidusAuth();
@@ -24,8 +25,7 @@ builder.Services.AddSingleton<ProcessCpuSampler>();
 builder.Services.AddSingleton<StorageMetricsCache>();
 builder.Services.AddScoped<SettingsService>();
 builder.Services.AddScoped<TimelineService>();
-builder.Services.AddScoped<EventLibraryService>();
-builder.Services.AddSingleton<EventArtifactStore>();
+builder.Services.AddScoped<RecordingLibraryService>();
 builder.Services.AddSingleton<VideoThumbnailExtractor>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ReconnectBackoff>();
@@ -46,6 +46,12 @@ builder.Services.AddHealthChecks();
 var app = builder.Build();
 
 await app.InitializeNidusDatabaseAsync();
+CleanupLegacyEventsDirectory(
+    app.Environment.ContentRootPath,
+    legacyEventsDirectory,
+    builder.Configuration["Storage:DataDirectory"] ?? "data",
+    builder.Configuration["Storage:RecordingsDirectory"] ?? "recordings",
+    app.Logger);
 
 if (FfmpegExecutable.IsAvailable())
 {
@@ -76,12 +82,70 @@ app.MapCameraEndpoints();
 app.MapSettingsEndpoints();
 app.MapLiveEndpoints();
 app.MapTimelineEndpoints();
-app.MapEventEndpoints();
+app.MapRecordingEndpoints();
 app.MapHub<CameraStatusHub>("/hubs/status");
-app.MapHub<DetectionHub>("/hubs/detections");
 if (webRootExists)
 {
     app.MapFallbackToFile("index.html").AllowAnonymous();
 }
 
 app.Run();
+
+static void CleanupLegacyEventsDirectory(
+    string contentRoot,
+    string configuredPath,
+    string dataPath,
+    string recordingsPath,
+    ILogger logger)
+{
+    var root = Path.GetFullPath(contentRoot);
+    var legacy = Path.GetFullPath(configuredPath, root);
+    var data = Path.GetFullPath(dataPath, root);
+    var recordings = Path.GetFullPath(recordingsPath, root);
+    var volumeRoot = Path.GetPathRoot(legacy);
+    if (string.Equals(legacy, root, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(legacy, volumeRoot, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(legacy, data, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(legacy, recordings, StringComparison.OrdinalIgnoreCase))
+    {
+        logger.LogWarning("Skipped unsafe legacy event directory cleanup for {EventsDirectory}.", legacy);
+        return;
+    }
+
+    if (Directory.Exists(legacy))
+    {
+        try
+        {
+            var removed = 0;
+            foreach (var path in Directory.EnumerateFiles(legacy, "*", SearchOption.AllDirectories)
+                         .Where(path => Path.GetExtension(path).ToLowerInvariant() is ".mp4" or ".jpg" or ".jpeg"))
+            {
+                File.Delete(path);
+                removed++;
+            }
+
+            foreach (var directory in Directory.EnumerateDirectories(legacy, "*", SearchOption.AllDirectories)
+                         .OrderByDescending(path => path.Length))
+            {
+                if (!Directory.EnumerateFileSystemEntries(directory).Any())
+                {
+                    Directory.Delete(directory);
+                }
+            }
+
+            if (!Directory.EnumerateFileSystemEntries(legacy).Any())
+            {
+                Directory.Delete(legacy);
+            }
+
+            logger.LogInformation(
+                "Removed {ArtifactCount} legacy event artifacts from {EventsDirectory}.",
+                removed,
+                legacy);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning(ex, "Could not remove all legacy event artifacts from {EventsDirectory}.", legacy);
+        }
+    }
+}

@@ -67,7 +67,7 @@ namespace NidusVision.Data.Migrations
 
                     b.Property<string>("Location")
                         .IsRequired()
-                        .HasMaxLength(128)
+                        .HasMaxLength(16)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("MainRtspUrl")
@@ -81,9 +81,6 @@ namespace NidusVision.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("PasswordProtected")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("RoiJson")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("Status")
@@ -109,7 +106,7 @@ namespace NidusVision.Data.Migrations
                     b.ToTable("Cameras");
                 });
 
-            modelBuilder.Entity("NidusVision.Core.Models.DetectionEvent", b =>
+            modelBuilder.Entity("NidusVision.Core.Models.DetectionInterval", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -121,25 +118,14 @@ namespace NidusVision.Data.Migrations
                     b.Property<Guid>("CameraId")
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("ClipPath")
-                        .HasMaxLength(2048)
-                        .HasColumnType("TEXT");
-
                     b.Property<float>("Confidence")
                         .HasColumnType("REAL");
 
                     b.Property<long>("EndUtc")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("SegmentIdsJson")
-                        .HasColumnType("TEXT");
-
                     b.Property<long>("StartUtc")
                         .HasColumnType("INTEGER");
-
-                    b.Property<string>("ThumbnailPath")
-                        .HasMaxLength(2048)
-                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -147,7 +133,7 @@ namespace NidusVision.Data.Migrations
 
                     b.HasIndex("CameraId", "StartUtc");
 
-                    b.ToTable("DetectionEvents");
+                    b.ToTable("DetectionIntervals");
                 });
 
             modelBuilder.Entity("NidusVision.Core.Models.LocalUser", b =>
@@ -216,10 +202,10 @@ namespace NidusVision.Data.Migrations
                     b.ToTable("RecordingSegments");
                 });
 
-            modelBuilder.Entity("NidusVision.Core.Models.DetectionEvent", b =>
+            modelBuilder.Entity("NidusVision.Core.Models.DetectionInterval", b =>
                 {
                     b.HasOne("NidusVision.Core.Models.Camera", "Camera")
-                        .WithMany("Detections")
+                        .WithMany("DetectionIntervals")
                         .HasForeignKey("CameraId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -240,7 +226,7 @@ namespace NidusVision.Data.Migrations
 
             modelBuilder.Entity("NidusVision.Core.Models.Camera", b =>
                 {
-                    b.Navigation("Detections");
+                    b.Navigation("DetectionIntervals");
 
                     b.Navigation("Segments");
                 });

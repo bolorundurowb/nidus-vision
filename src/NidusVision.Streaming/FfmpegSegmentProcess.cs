@@ -60,6 +60,10 @@ public sealed class FfmpegSegmentProcess
                 NidusVision.Core.Options.StorageOptions.MaxSegmentDurationSeconds).ToString(CultureInfo.InvariantCulture));
             startInfo.ArgumentList.Add("-reset_timestamps");
             startInfo.ArgumentList.Add("1");
+            // Fragment each MP4 so FFmpeg and browsers can read an open segment before
+            // the segment muxer writes its final trailer.
+            startInfo.ArgumentList.Add("-segment_format_options");
+            startInfo.ArgumentList.Add("movflags=+frag_keyframe+empty_moov+default_base_moof");
             startInfo.ArgumentList.Add("-strftime");
             startInfo.ArgumentList.Add("1");
             startInfo.ArgumentList.Add(output);

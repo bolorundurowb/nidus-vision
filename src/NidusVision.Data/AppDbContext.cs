@@ -7,7 +7,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 {
     public DbSet<Camera> Cameras => Set<Camera>();
     public DbSet<RecordingSegment> RecordingSegments => Set<RecordingSegment>();
-    public DbSet<DetectionEvent> DetectionEvents => Set<DetectionEvent>();
+    public DbSet<DetectionInterval> DetectionIntervals => Set<DetectionInterval>();
     public DbSet<AppSettings> AppSettings => Set<AppSettings>();
     public DbSet<LocalUser> LocalUsers => Set<LocalUser>();
 
@@ -22,7 +22,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Name).HasMaxLength(128);
-            entity.Property(e => e.Location).HasMaxLength(128);
+            entity.Property(e => e.Location).HasConversion<string>().HasMaxLength(16);
             entity.Property(e => e.MainRtspUrl).HasMaxLength(1024);
             entity.Property(e => e.SubRtspUrl).HasMaxLength(1024);
             entity.Property(e => e.LastResolution).HasMaxLength(32);
@@ -44,15 +44,13 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-        modelBuilder.Entity<DetectionEvent>(entity =>
+        modelBuilder.Entity<DetectionInterval>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.ClipPath).HasMaxLength(2048);
-            entity.Property(e => e.ThumbnailPath).HasMaxLength(2048);
             entity.HasIndex(e => new { e.CameraId, e.StartUtc });
             entity.HasIndex(e => e.Confidence);
             entity.HasOne(e => e.Camera)
-                .WithMany(c => c.Detections)
+                .WithMany(c => c.DetectionIntervals)
                 .HasForeignKey(e => e.CameraId)
                 .OnDelete(DeleteBehavior.Cascade);
         });

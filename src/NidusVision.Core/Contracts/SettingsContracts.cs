@@ -17,7 +17,7 @@ public sealed record SettingsWriteRequest(
     float SampleFps,
     float ConfidenceThreshold);
 
-public sealed record StorageMetrics(long UsedBytes, long TotalBytes, long GeneralBytes, long DetectionBytes, long DatabaseBytes);
+public sealed record StorageMetrics(long UsedBytes, long TotalBytes, long RecordingBytes, long DatabaseBytes);
 
 public sealed record SystemMetricsResponse(
     double CpuPercent,

@@ -27,11 +27,32 @@ public sealed class HumanDetector : IHumanDetector, IDisposable
             return;
         }
 
-        var options = new SessionOptions();
+        var renderPresent = OnnxExecutionProviders.LinuxRenderDevicePresent();
+        if (OnnxExecutionProviders.Preferred.Contains(OnnxExecutionProviders.OpenVinoGpu) && !renderPresent)
+        {
+            logger.LogInformation(
+                "Intel GPU device node {Device} is not present; skipping OpenVINO GPU and using CPU.",
+                OnnxExecutionProviders.LinuxRenderDevicePath);
+        }
+
+        var attempts = OnnxExecutionPlanner.Plan(OnnxExecutionProviders.Preferred, renderPresent);
         try
         {
-            options.AppendExecutionProvider_CPU();
-            _session = new InferenceSession(model, options);
+            _session = OnnxExecutionPlanner.Execute(
+                attempts,
+                attempt => CreateSession(model, attempt),
+                (attempt, ex) => logger.LogWarning(
+                    ex,
+                    "ONNX providers [{Chain}] failed for profile {Profile}; trying fallback.",
+                    string.Join(" -> ", attempt.Providers),
+                    OnnxExecutionProviders.ActiveProfileName));
+
+            if (_session is null)
+            {
+                logger.LogWarning("Failed to initialize ONNX Runtime; falling back to no-op detector.");
+                return;
+            }
+
             _inputName = _session.InputMetadata.Keys.First();
             var input = _session.InputMetadata[_inputName];
             var outputName = _session.OutputMetadata.Keys.First();
@@ -49,10 +70,13 @@ public sealed class HumanDetector : IHumanDetector, IDisposable
             logger.LogWarning(ex, "Failed to initialize ONNX Runtime; falling back to no-op detector.");
             _session?.Dispose();
             _session = null;
+            ExecutionProvider = null;
         }
     }
 
     public bool IsAvailable => _session is not null;
+
+    public string? ExecutionProvider { get; private set; }
 
     public IReadOnlyList<BoundingBox> Detect(
         ReadOnlySpan<byte> rgb24,
@@ -107,6 +131,32 @@ public sealed class HumanDetector : IHumanDetector, IDisposable
     }
 
     public void Dispose() => _session?.Dispose();
+
+    private InferenceSession CreateSession(string model, OnnxSessionAttempt attempt)
+    {
+        var options = new SessionOptions();
+        try
+        {
+            foreach (var provider in attempt.Providers)
+            {
+                OnnxExecutionProviders.Append(options, provider);
+            }
+
+            var session = new InferenceSession(model, options);
+            ExecutionProvider = attempt.Providers[0];
+            _logger.LogInformation(
+                "Selected ONNX execution provider {Provider} (profile {Profile}, chain {Chain}).",
+                ExecutionProvider,
+                OnnxExecutionProviders.ActiveProfileName,
+                string.Join(" -> ", attempt.Providers));
+            return session;
+        }
+        catch
+        {
+            options.Dispose();
+            throw;
+        }
+    }
 
     private static string FormatShape(int[] dims) =>
         "[" + string.Join(',', dims.Select(d => d <= 0 ? "dyn" : d.ToString())) + "]";

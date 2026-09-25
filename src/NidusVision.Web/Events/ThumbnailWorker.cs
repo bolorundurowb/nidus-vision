@@ -1,7 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
-using NidusVision.Core.Models;
-using NidusVision.Core.Options;
 using NidusVision.Data;
 
 namespace NidusVision.Web.Events;
@@ -9,13 +6,11 @@ namespace NidusVision.Web.Events;
 public sealed class ThumbnailWorker(
     IServiceScopeFactory scopes,
     VideoThumbnailExtractor extractor,
-    IOptions<StorageOptions> storage,
-    TimeProvider time,
     ILogger<ThumbnailWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(15), time);
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(15));
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -42,9 +37,7 @@ public sealed class ThumbnailWorker(
     {
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var remaining = VideoThumbnailExtractor.BatchSize;
-        remaining -= await FillEventThumbnailsAsync(db, remaining, cancellationToken);
-        _ = await FillRecordingThumbnailsAsync(db, remaining, cancellationToken);
+        _ = await FillRecordingThumbnailsAsync(db, VideoThumbnailExtractor.BatchSize, cancellationToken);
         if (db.ChangeTracker.HasChanges())
         {
             await db.SaveChangesAsync(cancellationToken);
@@ -71,47 +64,6 @@ public sealed class ThumbnailWorker(
         return selected;
     }
 
-    private async Task<int> FillEventThumbnailsAsync(AppDbContext db, int limit, CancellationToken cancellationToken)
-    {
-        if (limit <= 0)
-        {
-            return 0;
-        }
-
-        var candidates = await db.DetectionEvents
-            .Where(e => e.ThumbnailPath == null || e.ThumbnailPath == "")
-            .OrderByDescending(e => e.StartUtc)
-            .Take(limit)
-            .ToListAsync(cancellationToken);
-        var filled = 0;
-        foreach (var detection in candidates)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            filled++;
-            var source = await ResolveEventSourceAsync(db, detection, cancellationToken);
-            if (source is not { } video || !VideoThumbnailExtractor.IsSourceReady(video.Path, time))
-            {
-                continue;
-            }
-
-            var destination = VideoThumbnailExtractor.DestinationForEvent(
-                storage.Value.EventsDirectory,
-                detection.CameraId,
-                detection.StartUtc,
-                detection.Id);
-            var seek = VideoThumbnailExtractor.SeekForEvent(video.Path, detection, video.SourceStartUtc);
-            var written = await extractor.ExtractAsync(video.Path, destination, seek, cancellationToken);
-            if (written is null)
-            {
-                continue;
-            }
-
-            detection.ThumbnailPath = written;
-        }
-
-        return filled;
-    }
-
     private async Task<int> FillRecordingThumbnailsAsync(AppDbContext db, int limit, CancellationToken cancellationToken)
     {
         if (limit <= 0)
@@ -129,7 +81,7 @@ public sealed class ThumbnailWorker(
         {
             cancellationToken.ThrowIfCancellationRequested();
             filled++;
-            if (!VideoThumbnailExtractor.IsSourceReady(segment.Path, time))
+            if (!VideoThumbnailExtractor.IsSourceReady(segment.Path))
             {
                 continue;
             }
@@ -147,47 +99,4 @@ public sealed class ThumbnailWorker(
         return filled;
     }
 
-    private async Task<EventVideoSource?> ResolveEventSourceAsync(
-        AppDbContext db,
-        DetectionEvent detection,
-        CancellationToken cancellationToken)
-    {
-        if (detection.ClipPath is { Length: > 0 } clipPath && File.Exists(clipPath))
-        {
-            var clipName = $"{detection.Id:N}.mp4";
-            if (string.Equals(Path.GetFileName(clipPath), clipName, StringComparison.OrdinalIgnoreCase))
-            {
-                return new(clipPath, null);
-            }
-
-            var clipSegment = await db.RecordingSegments.AsNoTracking()
-                .Where(s => s.Path == clipPath)
-                .Select(s => (DateTimeOffset?)s.StartUtc)
-                .FirstOrDefaultAsync(cancellationToken);
-            return new(clipPath, clipSegment);
-        }
-
-        var at = detection.StartUtc.UtcDateTime;
-        var recovered = Path.Combine(
-            Path.GetFullPath(storage.Value.EventsDirectory),
-            detection.CameraId.ToString("N"),
-            at.ToString("yyyy"),
-            at.ToString("MM"),
-            at.ToString("dd"),
-            $"{detection.Id:N}.mp4");
-        if (File.Exists(recovered))
-        {
-            return new(recovered, null);
-        }
-
-        var segment = await db.RecordingSegments.AsNoTracking()
-            .Where(s => s.CameraId == detection.CameraId && s.StartUtc <= detection.EndUtc && s.EndUtc >= detection.StartUtc)
-            .OrderBy(s => s.StartUtc)
-            .FirstOrDefaultAsync(cancellationToken);
-        return segment?.Path is { } path && File.Exists(path)
-            ? new(path, segment.StartUtc)
-            : null;
-    }
-
-    private readonly record struct EventVideoSource(string Path, DateTimeOffset? SourceStartUtc);
 }

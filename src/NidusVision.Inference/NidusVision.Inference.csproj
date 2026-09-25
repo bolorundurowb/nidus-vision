@@ -1,18 +1,65 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <OnnxRuntimeProvider Condition="'$(OnnxRuntimeProvider)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">DirectML</OnnxRuntimeProvider>
+    <OnnxRuntimeProvider Condition="'$(OnnxRuntimeProvider)' == ''">Cpu</OnnxRuntimeProvider>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\NidusVision.Core\NidusVision.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
-    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.30.0" />
   </ItemGroup>
 
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
+  <Choose>
+    <When Condition="'$(OnnxRuntimeProvider)' == 'OpenVino'">
+      <PropertyGroup>
+        <DefineConstants>$(DefineConstants);ONNX_EP_OPENVINO</DefineConstants>
+      </PropertyGroup>
+      <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+        <PackageReference Include="Intel.ML.OnnxRuntime.OpenVino" Version="1.24.1" />
+      </ItemGroup>
+      <ItemGroup Condition="!$([MSBuild]::IsOSPlatform('Windows'))">
+        <PackageReference Include="Microsoft.ML.OnnxRuntime.Managed" Version="1.24.1" />
+      </ItemGroup>
+    </When>
+    <When Condition="'$(OnnxRuntimeProvider)' == 'DirectML'">
+      <PropertyGroup>
+        <DefineConstants>$(DefineConstants);ONNX_EP_DIRECTML</DefineConstants>
+      </PropertyGroup>
+      <ItemGroup>
+        <PackageReference Include="Microsoft.ML.OnnxRuntime.DirectML" Version="1.24.4" />
+      </ItemGroup>
+    </When>
+    <When Condition="'$(OnnxRuntimeProvider)' == 'Cuda'">
+      <PropertyGroup>
+        <DefineConstants>$(DefineConstants);ONNX_EP_CUDA</DefineConstants>
+      </PropertyGroup>
+      <ItemGroup>
+        <PackageReference Include="Microsoft.ML.OnnxRuntime.Gpu" Version="1.30.0" />
+      </ItemGroup>
+    </When>
+    <When Condition="'$(OnnxRuntimeProvider)' == 'Cpu'">
+      <ItemGroup>
+        <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.30.0" />
+      </ItemGroup>
+    </When>
+    <Otherwise>
+      <PropertyGroup>
+        <_UnknownOnnxRuntimeProvider>true</_UnknownOnnxRuntimeProvider>
+      </PropertyGroup>
+    </Otherwise>
+  </Choose>
+
+  <Target Name="ValidateOnnxRuntimeProvider" BeforeTargets="CollectPackageReferences;Restore;Build">
+    <Error
+      Condition="'$(_UnknownOnnxRuntimeProvider)' == 'true'"
+      Text="Unknown OnnxRuntimeProvider '$(OnnxRuntimeProvider)'. Use Cpu, DirectML, OpenVino, or Cuda (mutually exclusive native packages)." />
+  </Target>
 
 </Project>
