@@ -7,9 +7,16 @@ RUN npm run build
 
 FROM python:3.12-slim-bookworm AS ov-ort
 WORKDIR /ov
-COPY docker/copy-openvino-ort-natives.py /ov/copy-openvino-ort-natives.py
 RUN pip install --no-cache-dir --target /ov/pkg onnxruntime-openvino==1.24.1 \
-    && python3 /ov/copy-openvino-ort-natives.py
+    && mkdir -p /ov/native \
+    && find /ov/pkg \( -path '*/onnxruntime/*' -o -path '*/openvino/*' \) -type f \
+         \( -name '*.so' -o -name '*.so.*' -o -name '*.xml' -o -name '*.json' -o -name '*.mvcmd' \) \
+         ! -iname '*pybind*' ! -name '_*' \
+         -exec cp -a {} /ov/native/ \; \
+    && ls /ov/native/libonnxruntime.so* >/dev/null \
+    && if [ ! -e /ov/native/libonnxruntime.so ]; then \
+         ln -s "$(basename "$(ls /ov/native/libonnxruntime.so* | head -1)")" /ov/native/libonnxruntime.so; \
+       fi
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src

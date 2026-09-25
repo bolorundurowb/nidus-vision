@@ -132,7 +132,7 @@ import { AppIcon } from '../ui/app-icon';
   `,
   styles: `
     .toolbar { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; flex-wrap: wrap; }
-    .cams { grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); }
+    .cams { grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr)); }
     .cam { padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
     .cam-top { display: flex; align-items: flex-start; justify-content: space-between; }
     .cam-icon { width: 2.25rem; height: 2.25rem; border-radius: 0.5rem; background: var(--muted); color: var(--foreground); display: grid; place-items: center; }

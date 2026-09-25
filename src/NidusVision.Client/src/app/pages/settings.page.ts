@@ -17,7 +17,7 @@ import { AppIcon } from '../ui/app-icon';
         <section class="stack">
           <div class="card pad">
             <h3>Retention policy</h3>
-            <p class="muted">Automatically remove oldest recordings at the limit.</p>
+            <p class="muted">When the storage cap is reached, recordings without detections go first, then older footage.</p>
             <label>
               <span>General video retention <strong>{{ general() }} days</strong></span>
               <input type="range" min="1" max="90" [value]="general()" (input)="general.set(+$any($event.target).value); persist()">
@@ -37,7 +37,7 @@ import { AppIcon } from '../ui/app-icon';
                 (change)="setStorageLimit($any($event.target).value)"
               >
             </label>
-            <p class="muted help">Leave blank for no storage cap. When the cap is reached, the oldest recordings are removed first.</p>
+            <p class="muted help">Leave blank for no storage cap. When the cap is reached, recordings without detections are removed first, then the oldest remaining footage.</p>
             <label>
               <span>Recordings folder</span>
               <input type="text" readonly [value]="recordingsDirectory()" aria-readonly="true">
