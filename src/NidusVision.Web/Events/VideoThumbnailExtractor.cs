@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Globalization;
-using NidusVision.Core.Models;
 using NidusVision.Core.Storage;
 using NidusVision.Streaming;
 
@@ -8,54 +7,24 @@ namespace NidusVision.Web.Events;
 
 public sealed class VideoThumbnailExtractor
 {
-    public static readonly TimeSpan EventSeek = TimeSpan.FromSeconds(15);
     public static readonly TimeSpan RecordingSeek = TimeSpan.FromSeconds(2);
-    public static readonly TimeSpan MinSourceAge = TimeSpan.FromSeconds(10);
     public const int Width = 640;
     public const int BatchSize = 8;
 
     public static bool NeedsThumbnail(string? storedPath) =>
         string.IsNullOrWhiteSpace(storedPath) || !File.Exists(storedPath);
 
-    public static bool IsSourceReady(string path, TimeProvider time)
+    public static bool IsSourceReady(string path)
     {
         var info = new FileInfo(path);
-        return info.Exists
-            && info.Length > 0
-            && time.GetUtcNow() - info.LastWriteTimeUtc >= MinSourceAge;
+        // Recording segments are fragmented MP4s, so an open file can be read as
+        // soon as FFmpeg has emitted its initial metadata and first fragment.
+        // Failed early attempts remain unindexed and are retried next cycle.
+        return info.Exists && info.Length > 0;
     }
 
     public static string DestinationForRecording(string recordingPath) =>
         RecordingPath.ThumbnailFor(recordingPath);
-
-    public static string DestinationForEvent(string eventsDirectory, Guid cameraId, DateTimeOffset startUtc, Guid eventId)
-    {
-        var at = startUtc.UtcDateTime;
-        return Path.Combine(
-            Path.GetFullPath(eventsDirectory),
-            cameraId.ToString("N"),
-            at.ToString("yyyy", CultureInfo.InvariantCulture),
-            at.ToString("MM", CultureInfo.InvariantCulture),
-            at.ToString("dd", CultureInfo.InvariantCulture),
-            $"{eventId:N}.jpg");
-    }
-
-    public static TimeSpan SeekForEvent(string sourcePath, DetectionEvent detection, DateTimeOffset? sourceStartUtc)
-    {
-        var clipName = $"{detection.Id:N}.mp4";
-        if (string.Equals(Path.GetFileName(sourcePath), clipName, StringComparison.OrdinalIgnoreCase))
-        {
-            return EventSeek;
-        }
-
-        if (sourceStartUtc is { } start)
-        {
-            var seek = detection.StartUtc - start;
-            return seek < TimeSpan.Zero ? TimeSpan.Zero : seek;
-        }
-
-        return EventSeek;
-    }
 
     public static void ConfigureExtract(ProcessStartInfo startInfo, string sourcePath, string destination, TimeSpan seek)
     {

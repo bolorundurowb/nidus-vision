@@ -60,21 +60,19 @@ public sealed class RetentionWorker(IServiceScopeFactory scopes, TimeProvider ti
         }
 
         var detectionCutoff = time.GetUtcNow() - TimeSpan.FromDays(settings.DetectionRetentionDays);
-        var expiredEvents = await db.DetectionEvents
+        var expiredDetections = await db.DetectionIntervals
             .Where(e => e.EndUtc <= detectionCutoff)
             .ToListAsync(cancellationToken);
-        foreach (var detection in expiredEvents)
+        foreach (var detection in expiredDetections)
         {
-            DeleteIfExists(detection.ClipPath);
-            DeleteIfExists(detection.ThumbnailPath);
-            db.DetectionEvents.Remove(detection);
+            db.DetectionIntervals.Remove(detection);
         }
 
         await db.SaveChangesAsync(cancellationToken);
         logger.LogInformation(
-            "Retention removed {SegmentCount} segments and {EventCount} events.",
+            "Retention removed {SegmentCount} segments and {DetectionCount} detection intervals.",
             purge.Count,
-            expiredEvents.Count);
+            expiredDetections.Count);
     }
 
     private static void DeleteIfExists(string? path)

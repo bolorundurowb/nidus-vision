@@ -9,40 +9,6 @@ namespace NidusVision.Tests;
 public sealed class EventLibraryPaginationTests : SqliteTestBase
 {
     [Fact]
-    public async Task SearchAsyncWithCameraAndPageReturnsNewestMatchingEvents()
-    {
-        // Arrange
-        await using var db = CreateContext();
-        var front = NewCamera("Front Yard");
-        var garage = NewCamera("Garage");
-        db.Cameras.AddRange(front, garage);
-        var start = DateTimeOffset.Parse("2026-09-23T12:00:00Z");
-        db.DetectionEvents.AddRange(
-            NewEvent(front.Id, start.AddMinutes(1), 0.6f),
-            NewEvent(front.Id, start.AddMinutes(2), 0.7f),
-            NewEvent(front.Id, start.AddMinutes(3), 0.8f),
-            NewEvent(front.Id, start.AddMinutes(4), 0.9f),
-            NewEvent(garage.Id, start.AddMinutes(5), 0.95f));
-        await db.SaveChangesAsync();
-
-        // Act
-        var result = await CreateService(db).SearchAsync(
-            front.Id,
-            page: 2,
-            pageSize: 2,
-            fromUtc: null,
-            toUtc: null,
-            CancellationToken.None);
-
-        // Assert
-        result.TotalCount.Must().Be(4);
-        result.TotalPages.Must().Be(2);
-        result.Page.Must().Be(2);
-        result.Items.Select(item => item.StartUtc).Must().BeSequenceEqual(
-            [start.AddMinutes(2), start.AddMinutes(1)]);
-    }
-
-    [Fact]
     public async Task SearchRecordingsAsyncWithCameraAndPageReturnsRequestedRecordings()
     {
         // Arrange
@@ -61,6 +27,7 @@ public sealed class EventLibraryPaginationTests : SqliteTestBase
         // Act
         var result = await CreateService(db).SearchRecordingsAsync(
             front.Id,
+            location: null,
             page: 2,
             pageSize: 2,
             fromUtc: null,
@@ -76,17 +43,13 @@ public sealed class EventLibraryPaginationTests : SqliteTestBase
     }
 
     [Fact]
-    public async Task SearchAsyncWithDateRangeFiltersEventsAndRecordings()
+    public async Task SearchRecordingsAsyncWithDateRangeFiltersRecordings()
     {
         // Arrange
         await using var db = CreateContext();
         var camera = NewCamera("Front Yard");
         db.Cameras.Add(camera);
         var day = DateTimeOffset.Parse("2026-09-23T00:00:00Z");
-        db.DetectionEvents.AddRange(
-            NewEvent(camera.Id, day.AddHours(-2), 0.9f),
-            NewEvent(camera.Id, day.AddHours(8), 0.8f),
-            NewEvent(camera.Id, day.AddDays(1).AddHours(1), 0.7f));
         db.RecordingSegments.AddRange(
             NewRecording(camera.Id, day.AddMinutes(-10), 1),
             NewRecording(camera.Id, day.AddHours(10), 2),
@@ -94,15 +57,9 @@ public sealed class EventLibraryPaginationTests : SqliteTestBase
         await db.SaveChangesAsync();
 
         // Act
-        var events = await CreateService(db).SearchAsync(
-            camera.Id,
-            page: 1,
-            pageSize: 12,
-            fromUtc: day,
-            toUtc: day.AddDays(1),
-            CancellationToken.None);
         var recordings = await CreateService(db).SearchRecordingsAsync(
             camera.Id,
+            location: null,
             page: 1,
             pageSize: 12,
             fromUtc: day,
@@ -111,8 +68,6 @@ public sealed class EventLibraryPaginationTests : SqliteTestBase
             CancellationToken.None);
 
         // Assert
-        events.TotalCount.Must().Be(1);
-        events.Items[0].StartUtc.Must().Be(day.AddHours(8));
         recordings.TotalCount.Must().Be(2);
         recordings.Items.Select(item => item.ByteSize).Must().BeSequenceEqual([2L, 1L]);
     }
@@ -133,9 +88,9 @@ public sealed class EventLibraryPaginationTests : SqliteTestBase
         await db.SaveChangesAsync();
 
         var withDetections = await CreateService(db).SearchRecordingsAsync(
-            camera.Id, 1, 12, null, null, true, CancellationToken.None);
+            camera.Id, null, 1, 12, null, null, true, CancellationToken.None);
         var without = await CreateService(db).SearchRecordingsAsync(
-            camera.Id, 1, 12, null, null, false, CancellationToken.None);
+            camera.Id, null, 1, 12, null, null, false, CancellationToken.None);
 
         withDetections.TotalCount.Must().Be(1);
         withDetections.Items[0].HasHuman.Must().BeTrue();
@@ -143,7 +98,34 @@ public sealed class EventLibraryPaginationTests : SqliteTestBase
         without.Items.All(item => !item.HasHuman).Must().BeTrue();
     }
 
-    private EventLibraryService CreateService(AppDbContext db) =>
+    [Fact]
+    public async Task SearchRecordingsAsyncReturnsClippedDetectionIntervals()
+    {
+        await using var db = CreateContext();
+        var camera = NewCamera("Exterior");
+        camera.Location = CameraLocation.Exterior;
+        var start = DateTimeOffset.Parse("2026-09-23T12:00:00Z");
+        db.Cameras.Add(camera);
+        db.RecordingSegments.Add(NewRecording(camera.Id, start, 1));
+        db.DetectionIntervals.Add(new DetectionInterval
+        {
+            CameraId = camera.Id,
+            StartUtc = start.AddMinutes(-1),
+            EndUtc = start.AddMinutes(2),
+            Confidence = 0.9f,
+        });
+        await db.SaveChangesAsync();
+
+        var result = await CreateService(db).SearchRecordingsAsync(
+            null, CameraLocation.Exterior, 1, 12, null, null, null, CancellationToken.None);
+
+        result.Items.Must().HaveCount(1);
+        result.Items[0].DetectionIntervals.Must().HaveCount(1);
+        result.Items[0].DetectionIntervals[0].StartUtc.Must().Be(start);
+        result.Items[0].Location.Must().Be("Exterior");
+    }
+
+    private RecordingLibraryService CreateService(AppDbContext db) =>
         new(db, Options.Create(new StorageOptions
         {
             RecordingsDirectory = Path.Combine(Path.GetTempPath(), "nidus-tests", Guid.NewGuid().ToString("N")),
@@ -151,15 +133,6 @@ public sealed class EventLibraryPaginationTests : SqliteTestBase
 
     private static Camera NewCamera(string name) =>
         new() { Name = name, MainRtspUrl = $"rtsp://localhost/{name}" };
-
-    private static DetectionEvent NewEvent(Guid cameraId, DateTimeOffset start, float confidence) =>
-        new()
-        {
-            CameraId = cameraId,
-            StartUtc = start,
-            EndUtc = start.AddSeconds(5),
-            Confidence = confidence,
-        };
 
     private static RecordingSegment NewRecording(Guid cameraId, DateTimeOffset start, int index) =>
         new()

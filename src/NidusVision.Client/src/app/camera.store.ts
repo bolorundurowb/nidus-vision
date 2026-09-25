@@ -37,8 +37,8 @@ export class CameraStore {
     }
   }
 
-  async addCamera(name: string, url: string, username?: string, password?: string): Promise<boolean> {
-    const body: CameraWrite = cameraWrite({ name, url, username, password });
+  async addCamera(name: string, url: string, location: string, enabled: boolean, username?: string, password?: string): Promise<boolean> {
+    const body: CameraWrite = cameraWrite({ name, url, location, enabled, username, password });
     try {
       const created = await this.api.create(body);
       this.cameras.update(list => [...list, this.api.toItem(created)]);

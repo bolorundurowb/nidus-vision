@@ -9,6 +9,11 @@ services:
       - "8080:8080"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    devices:
+      - /dev/dri:/dev/dri
+    group_add:
+      - "44"
+      - "109"
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
@@ -18,13 +23,8 @@ services:
       Storage__RecordingsDirectory: /var/nidus/recordings
       Storage__EventsDirectory: /var/nidus/events
       # NIDUS_PERSON_MODEL: /app/models/person.onnx
+      # Optional VAAPI video decode (separate from OpenVINO GPU inference):
       # LIBVA_DRIVER_NAME: iHD
-    # devices:
-    #   - /dev/dri/renderD128:/dev/dri/renderD128
-    #   - /dev/dri/card0:/dev/dri/card0
-    # group_add:
-    #   - "44"
-    #   - "109"
     volumes:
       - nidus-data:/app/data
       - nidus-recordings:/var/nidus/recordings

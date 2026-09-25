@@ -67,9 +67,6 @@ public sealed class StorageMetricsCache(IOptions<StorageOptions> storage, TimePr
         var recordings = Path.GetFullPath(storage.Value.RecordingsDirectory);
         Directory.CreateDirectory(recordings);
         long generalBytes = DirSize(recordings);
-        var events = Path.GetFullPath(storage.Value.EventsDirectory);
-        Directory.CreateDirectory(events);
-        long detectionBytes = DirSize(events);
         var dataDir = Path.GetFullPath(storage.Value.DataDirectory);
         Directory.CreateDirectory(dataDir);
         long dbBytes = DirSize(dataDir);
@@ -82,10 +79,9 @@ public sealed class StorageMetricsCache(IOptions<StorageOptions> storage, TimePr
         }
 
         return new StorageMetrics(
-            generalBytes + detectionBytes + dbBytes,
+            generalBytes + dbBytes,
             total,
             generalBytes,
-            detectionBytes,
             dbBytes);
     }
 

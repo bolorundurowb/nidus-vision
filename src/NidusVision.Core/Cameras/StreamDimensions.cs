@@ -1,7 +1,5 @@
 using System.Globalization;
-using System.Text.Json;
 using System.Text.RegularExpressions;
-using NidusVision.Core.Roi;
 
 namespace NidusVision.Core.Cameras;
 
@@ -30,37 +28,4 @@ public static class StreamDimensions
 
         return true;
     }
-}
-
-public static class RoiJson
-{
-    public static IReadOnlyList<Point> Parse(string? json)
-    {
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            return [];
-        }
-
-        try
-        {
-            var points = JsonSerializer.Deserialize<List<RoiPoint>>(json, JsonOptions);
-            if (points is null)
-            {
-                return [];
-            }
-
-            return [.. points.Select(p => new Point(p.X, p.Y))];
-        }
-        catch (JsonException)
-        {
-            return [];
-        }
-    }
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-    };
-
-    private sealed record RoiPoint(double X, double Y);
 }

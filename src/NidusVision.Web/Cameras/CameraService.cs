@@ -110,7 +110,9 @@ public sealed class CameraService(AppDbContext db, IDataProtectionProvider prote
 
         var main = RtspUrlCredentials.Split(request.MainRtspUrl);
         camera.Name = request.Name.Trim();
-        camera.Location = string.IsNullOrWhiteSpace(request.Location) ? "Unassigned" : request.Location.Trim();
+        camera.Location = string.Equals(request.Location?.Trim(), nameof(CameraLocation.Exterior), StringComparison.OrdinalIgnoreCase)
+            ? CameraLocation.Exterior
+            : CameraLocation.Interior;
         camera.Enabled = request.Enabled;
         camera.MainRtspUrl = main.UrlWithoutCredentials;
         camera.SubRtspUrl = string.IsNullOrWhiteSpace(request.SubRtspUrl)
@@ -142,7 +144,6 @@ public sealed class CameraService(AppDbContext db, IDataProtectionProvider prote
         camera.Transport = request.Transport.Equals("udp", StringComparison.OrdinalIgnoreCase)
             ? RtspTransport.Udp
             : RtspTransport.Tcp;
-        camera.RoiJson = request.RoiJson;
         return camera;
     }
 
@@ -204,7 +205,7 @@ public sealed class CameraService(AppDbContext db, IDataProtectionProvider prote
         return new(
             camera.Id,
             camera.Name,
-            camera.Location,
+            camera.Location.ToString(),
             camera.Enabled,
             RtspUrlCredentials.Display(camera.MainRtspUrl, hasPassword),
             camera.SubRtspUrl is null ? null : RtspUrlCredentials.Display(camera.SubRtspUrl, hasPassword),
@@ -212,7 +213,6 @@ public sealed class CameraService(AppDbContext db, IDataProtectionProvider prote
             hasPassword,
             camera.Transport.ToString().ToLowerInvariant(),
             camera.Status.ToString().ToLowerInvariant(),
-            camera.RoiJson,
             camera.LastResolution,
             camera.LastFps,
             stats.Bitrate,

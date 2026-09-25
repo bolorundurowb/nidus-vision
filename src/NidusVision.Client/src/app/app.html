@@ -29,7 +29,6 @@
         <div class="sys">
           <p>System status</p>
           <span><app-icon name="activity" />All systems operational</span>
-          <span><app-icon name="hard-drive" />2.3 TB / 4 TB used</span>
           <span><app-icon name="zap" />{{ store.recordingCount() }} active recordings</span>
         </div>
       }
@@ -44,9 +43,6 @@
           </div>
         </div>
         <div class="hdr-meta">
-          <button type="button" class="icon-btn" (click)="alerts.open.set(!alerts.open())" aria-label="Notifications">
-            <app-icon name="bell" />
-          </button>
           <span class="live-count"><i class="dot recording"></i>{{ store.recordingCount() }} recording</span>
         </div>
       </header>
@@ -69,6 +65,15 @@
         <label>Camera name<input #name class="input" placeholder="e.g. Side Gate"></label>
         <label>RTSP stream URL<input #url class="input mono" placeholder="rtsp://192.168.1.20:554/stream"></label>
         <div class="field-pair">
+          <label>Location
+            <select #location class="input">
+              <option value="Interior">Interior</option>
+              <option value="Exterior">Exterior</option>
+            </select>
+          </label>
+          <label class="toggle-field"><span>Camera enabled</span><input #enabled type="checkbox" checked></label>
+        </div>
+        <div class="field-pair">
           <label>Username<input #username class="input" autocomplete="off" placeholder="Optional"></label>
           <label>Password<input #password type="password" class="input" autocomplete="new-password" placeholder="Optional"></label>
         </div>
@@ -85,27 +90,15 @@
             type="button"
             class="btn outline"
             [disabled]="probing()"
-            (click)="testConnection(url.value, username.value, password.value)"
+            (click)="testConnection(url.value, location.value, enabled.checked, username.value, password.value)"
           >
             <app-icon name="plug" />{{ probing() ? 'Testing…' : 'Test connection' }}
           </button>
-          <button type="button" class="btn" (click)="addCamera(name.value, url.value, username.value, password.value)">
+          <button type="button" class="btn" (click)="addCamera(name.value, url.value, location.value, enabled.checked, username.value, password.value)">
             <app-icon name="save" />Save camera
           </button>
         </div>
       </div>
     </div>
   }
-}
-
-@if (alerts.open()) {
-  <aside class="tray card">
-    <h3>Notifications</h3>
-    @for (item of alerts.items(); track item.eventId) {
-      <p><strong>{{ item.cameraName }}</strong> · Person detected</p>
-    }
-    @if (alerts.items().length === 0) {
-      <p class="muted">No human detections yet.</p>
-    }
-  </aside>
 }

@@ -33,7 +33,7 @@ public static class RetentionPlanner
             return expired;
         }
 
-        foreach (var segment in remaining.OrderBy(s => s.EndUtc))
+        foreach (var segment in remaining.OrderBy(s => s.HasHuman).ThenBy(s => s.EndUtc))
         {
             if (used <= cap)
             {

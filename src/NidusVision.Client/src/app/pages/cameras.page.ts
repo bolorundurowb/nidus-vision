@@ -6,11 +6,6 @@ import { AddCameraDialog } from '../add-camera.dialog';
 import { CameraItem, fpsLabel, statLabel } from '../models';
 import { AppIcon } from '../ui/app-icon';
 
-interface RoiPoint {
-  x: number;
-  y: number;
-}
-
 @Component({
   selector: 'app-cameras-page',
   imports: [StatusPill, AppIcon],
@@ -75,7 +70,7 @@ interface RoiPoint {
             <div class="modal-head">
               <div>
                 <h2>Configure {{ cam.name }}</h2>
-                <p class="muted">Stream details, credentials, and detection area.</p>
+                <p class="muted">Stream details, location, and credentials.</p>
               </div>
               <button type="button" class="icon-btn" (click)="close()" aria-label="Close dialog">
                 <app-icon name="x" />
@@ -83,7 +78,18 @@ interface RoiPoint {
             </div>
             <label>Name<input class="input" [value]="cam.name" (input)="cam.name = $any($event.target).value"></label>
             <label>RTSP URL<input class="input mono" [value]="cam.mainRtspUrl" (input)="cam.mainRtspUrl = $any($event.target).value"></label>
-            <label>Location<input class="input" [value]="cam.location" (input)="cam.location = $any($event.target).value"></label>
+            <div class="field-pair">
+              <label>Location
+                <select class="input" [value]="cam.location" (change)="cam.location = $any($event.target).value">
+                  <option value="Interior">Interior</option>
+                  <option value="Exterior">Exterior</option>
+                </select>
+              </label>
+              <label class="enabled-field">
+                <span>Camera enabled</span>
+                <input type="checkbox" [checked]="cam.enabled" (change)="cam.enabled = $any($event.target).checked">
+              </label>
+            </div>
             <div class="field-pair">
               <label>
                 Username
@@ -108,23 +114,6 @@ interface RoiPoint {
                 {{ cam.hasCredentials ? 'Credentials are stored. Leave blank to keep them.' : 'This camera has no stored credentials yet.' }}
               </p>
             }
-            <div class="roi-block">
-              <div class="roi-head">
-                <span>Region of interest</span>
-                <button type="button" class="btn outline sm" (click)="roiPoints.set([])">
-                  <app-icon name="x" />Clear
-                </button>
-              </div>
-              <p class="muted small">Click inside the frame to add polygon points.</p>
-              <svg class="roi" viewBox="0 0 320 180" (click)="addPoint($event)">
-                @if (roiPoints().length > 1) {
-                  <polygon [attr.points]="polygon()" />
-                }
-                @for (point of roiPoints(); track $index) {
-                  <circle [attr.cx]="point.x * 320" [attr.cy]="point.y * 180" r="4" />
-                }
-              </svg>
-            </div>
             <div class="modal-actions">
               <button type="button" class="btn outline" (click)="close()">
                 <app-icon name="x" />Cancel
@@ -143,7 +132,7 @@ interface RoiPoint {
   `,
   styles: `
     .toolbar { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; flex-wrap: wrap; }
-    .cams { grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); }
+    .cams { grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr)); }
     .cam { padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
     .cam-top { display: flex; align-items: flex-start; justify-content: space-between; }
     .cam-icon { width: 2.25rem; height: 2.25rem; border-radius: 0.5rem; background: var(--muted); color: var(--foreground); display: grid; place-items: center; }
@@ -158,12 +147,8 @@ interface RoiPoint {
     th { color: var(--muted-foreground); font-size: 0.75rem; font-weight: 500; padding: 0.75rem 0.5rem; }
     td { padding: 0.75rem 0.5rem; border-top: 1px solid var(--border); }
     td.url { color: var(--muted-foreground); }
-    .small { font-size: 0.75rem; margin: 0; }
-    .roi-block { display: flex; flex-direction: column; gap: 0.4rem; }
-    .roi-head { display: flex; align-items: center; justify-content: space-between; font-size: 0.75rem; font-weight: 500; }
-    .roi { width: 100%; aspect-ratio: 16 / 9; max-height: 11rem; background: #0f172a; border-radius: 0.5rem; cursor: crosshair; }
-    .roi polygon { fill: rgb(249 115 22 / 0.25); stroke: var(--orange); stroke-width: 2; }
-    .roi circle { fill: var(--orange); }
+    .enabled-field { display: flex; align-items: center; justify-content: space-between; }
+    .enabled-field input { width: 1rem; height: 1rem; accent-color: var(--primary); }
     .icon-btn { border: 0; background: transparent; color: inherit; padding: 0.25rem 0.4rem; border-radius: 0.35rem; display: inline-grid; place-items: center; }
   `,
 })
@@ -172,7 +157,6 @@ export class CamerasPage {
   private readonly addDialog = inject(AddCameraDialog);
   private readonly api = inject(CameraApi);
   protected readonly editing = signal<CameraItem | null>(null);
-  protected readonly roiPoints = signal<RoiPoint[]>([]);
   protected readonly username = signal('');
   protected readonly password = signal('');
   protected readonly probing = signal(false);
@@ -191,7 +175,6 @@ export class CamerasPage {
     this.password.set('');
     this.probeResult.set(null);
     this.removeCredentials.set(false);
-    this.roiPoints.set(camera ? parseRoi(camera.roiJson) : []);
     this.editing.set(camera ? { ...camera } : null);
   }
 
@@ -204,18 +187,6 @@ export class CamerasPage {
   protected close(): void {
     this.editing.set(null);
     this.probeResult.set(null);
-  }
-
-  protected polygon(): string {
-    return this.roiPoints().map(p => `${p.x * 320},${p.y * 180}`).join(' ');
-  }
-
-  protected addPoint(event: MouseEvent): void {
-    const rect = (event.currentTarget as SVGSVGElement).getBoundingClientRect();
-    this.roiPoints.update(points => [
-      ...points,
-      { x: (event.clientX - rect.left) / rect.width, y: (event.clientY - rect.top) / rect.height },
-    ]);
   }
 
   protected async testConnection(camera: CameraItem): Promise<void> {
@@ -235,13 +206,11 @@ export class CamerasPage {
   }
 
   protected async save(camera: CameraItem): Promise<void> {
-    const roiJson = this.roiPoints().length ? JSON.stringify(this.roiPoints()) : null;
-    const updated: CameraItem = { ...camera, roiJson };
     try {
-      const saved = await this.api.update(camera.id, this.writeBody(updated));
+      const saved = await this.api.update(camera.id, this.writeBody(camera));
       this.store.cameras.update(list => list.map(c => (c.id === camera.id ? this.api.toItem(saved) : c)));
     } catch {
-      this.store.cameras.update(list => list.map(c => (c.id === camera.id ? updated : c)));
+      this.store.cameras.update(list => list.map(c => (c.id === camera.id ? camera : c)));
     }
     this.close();
   }
@@ -261,22 +230,10 @@ export class CamerasPage {
       name: camera.name,
       url: camera.mainRtspUrl,
       location: camera.location,
+      enabled: camera.enabled,
       username: this.username(),
       password: this.password(),
-      roiJson: camera.roiJson ?? null,
       clearCredentials: this.removeCredentials(),
     });
-  }
-}
-
-function parseRoi(roiJson: string | null | undefined): RoiPoint[] {
-  if (!roiJson) {
-    return [];
-  }
-  try {
-    const parsed = JSON.parse(roiJson) as RoiPoint[];
-    return Array.isArray(parsed) ? parsed.filter(p => typeof p?.x === 'number' && typeof p?.y === 'number') : [];
-  } catch {
-    return [];
   }
 }

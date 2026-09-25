@@ -15,7 +15,7 @@ public sealed class TimelineService(AppDbContext db)
             .Include(s => s.Camera)
             .Where(s => s.EndUtc >= from && s.StartUtc <= to)
             .ToListAsync(cancellationToken);
-        var detections = await db.DetectionEvents.AsNoTracking()
+        var detections = await db.DetectionIntervals.AsNoTracking()
             .Include(e => e.Camera)
             .Where(e => e.EndUtc >= from && e.StartUtc <= to)
             .ToListAsync(cancellationToken);

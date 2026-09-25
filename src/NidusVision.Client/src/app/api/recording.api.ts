@@ -2,28 +2,26 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
-export interface EventDto {
+export interface DetectionIntervalDto {
   id: string;
-  cameraId: string;
-  cameraName: string;
   startUtc: string;
   endUtc: string;
-  hasThumbnail: boolean;
-  resolution: string | null;
+  confidence: number;
 }
 
 export interface RecordingDto {
   id: string;
   cameraId: string;
   cameraName: string;
+  location: string;
   startUtc: string;
   endUtc: string;
   byteSize: number;
-  hasHuman: boolean;
   available: boolean;
   hasThumbnail: boolean;
   resolution: string | null;
   isActive: boolean;
+  detectionIntervals?: DetectionIntervalDto[];
 }
 
 export interface PagedResult<T> {
@@ -34,41 +32,31 @@ export interface PagedResult<T> {
   totalPages: number;
 }
 
-export interface LibraryQuery {
-  cameraId: string | null;
-  page: number;
-  pageSize: number;
+export interface RecordingQuery {
+  location?: string;
+  cameraId?: string;
   fromUtc?: string;
   toUtc?: string;
-  hasHuman?: boolean;
+  hasDetections?: boolean;
+  page: number;
+  pageSize: number;
 }
 
 @Injectable({ providedIn: 'root' })
-export class EventApi {
+export class RecordingApi {
   private readonly http = inject(HttpClient);
-  search(query: LibraryQuery) {
-    return firstValueFrom(this.http.get<PagedResult<EventDto>>('/api/events', { params: toParams(query) }));
-  }
-  get(id: string) {
-    return firstValueFrom(this.http.get<EventDto>(`/api/events/${id}`));
-  }
-  delete(id: string) {
-    return firstValueFrom(this.http.delete(`/api/events/${id}`));
-  }
-  recordings(query: LibraryQuery) {
+
+  search(query: RecordingQuery) {
     return firstValueFrom(this.http.get<PagedResult<RecordingDto>>('/api/recordings', { params: toParams(query) }));
   }
 }
 
-function toParams(query: LibraryQuery): Record<string, string | number> {
-  const params: Record<string, string | number> = {
-    page: query.page,
-    pageSize: query.pageSize,
-  };
+function toParams(query: RecordingQuery): Record<string, string | number> {
+  const params: Record<string, string | number> = { page: query.page, pageSize: query.pageSize };
+  if (query.location) params['location'] = query.location;
   if (query.cameraId) params['cameraId'] = query.cameraId;
   if (query.fromUtc) params['fromUtc'] = query.fromUtc;
   if (query.toUtc) params['toUtc'] = query.toUtc;
-  if (query.hasHuman === true) params['hasHuman'] = 'true';
-  if (query.hasHuman === false) params['hasHuman'] = 'false';
+  if (query.hasDetections !== undefined) params['hasHuman'] = String(query.hasDetections);
   return params;
 }

@@ -21,7 +21,7 @@ export interface MetricsDto {
   memoryTotalBytes: number;
   uptime: string;
   inferenceLatencyMs: number | null;
-  storage: { usedBytes: number; totalBytes: number; generalBytes: number; detectionBytes: number; databaseBytes: number };
+  storage: { usedBytes: number; totalBytes: number; recordingBytes: number; databaseBytes: number };
   version: string;
 }
 

@@ -13,11 +13,17 @@ public enum RtspTransport
     Udp = 1
 }
 
+public enum CameraLocation
+{
+    Interior = 0,
+    Exterior = 1
+}
+
 public sealed class Camera
 {
     public Guid Id { get; set; } = Guid.CreateVersion7();
     public required string Name { get; set; }
-    public string Location { get; set; } = "Unassigned";
+    public CameraLocation Location { get; set; } = CameraLocation.Interior;
     public bool Enabled { get; set; } = true;
     public required string MainRtspUrl { get; set; }
     public string? SubRtspUrl { get; set; }
@@ -25,14 +31,13 @@ public sealed class Camera
     public string? PasswordProtected { get; set; }
     public RtspTransport Transport { get; set; } = RtspTransport.Tcp;
     public CameraStatus Status { get; set; } = CameraStatus.Offline;
-    public string? RoiJson { get; set; }
     public string? LastResolution { get; set; }
     public int? LastFps { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public ICollection<RecordingSegment> Segments { get; set; } = [];
-    public ICollection<DetectionEvent> Detections { get; set; } = [];
+    public ICollection<DetectionInterval> DetectionIntervals { get; set; } = [];
 }
 
 public sealed class RecordingSegment
@@ -50,7 +55,7 @@ public sealed class RecordingSegment
     public string? ThumbnailPath { get; set; }
 }
 
-public sealed class DetectionEvent
+public sealed class DetectionInterval
 {
     public Guid Id { get; set; } = Guid.CreateVersion7();
     public Guid CameraId { get; set; }
@@ -59,9 +64,6 @@ public sealed class DetectionEvent
     public DateTimeOffset EndUtc { get; set; }
     public float Confidence { get; set; }
     public string? BoundingBoxJson { get; set; }
-    public string? ThumbnailPath { get; set; }
-    public string? ClipPath { get; set; }
-    public string? SegmentIdsJson { get; set; }
 }
 
 public sealed class AppSettings

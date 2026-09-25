@@ -36,7 +36,7 @@ public sealed class TimestampQueryTests : SqliteTestBase
         await using var db = CreateContext();
         var camera = AddCamera(db);
         var start = DateTimeOffset.Parse("2026-09-23T12:00:00+02:00");
-        db.DetectionEvents.Add(new DetectionEvent
+        db.DetectionIntervals.Add(new DetectionInterval
         {
             CameraId = camera.Id,
             StartUtc = start,
@@ -46,7 +46,7 @@ public sealed class TimestampQueryTests : SqliteTestBase
         await db.SaveChangesAsync(CancellationToken.None);
 
         // Act
-        var stored = await db.DetectionEvents.AsNoTracking()
+        var stored = await db.DetectionIntervals.AsNoTracking()
             .OrderBy(e => e.StartUtc)
             .FirstAsync(CancellationToken.None);
 

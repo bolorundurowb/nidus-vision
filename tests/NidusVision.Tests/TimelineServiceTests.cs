@@ -31,7 +31,7 @@ public sealed class TimelineServiceTests : SqliteTestBase
             EndUtc = start.AddMinutes(30),
             ByteSize = 10,
         });
-        db.DetectionEvents.Add(new DetectionEvent
+        db.DetectionIntervals.Add(new DetectionInterval
         {
             CameraId = camera.Id,
             StartUtc = start.AddMinutes(5),
