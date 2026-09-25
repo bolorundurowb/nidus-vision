@@ -37,11 +37,11 @@ RUN apt-get update \
 COPY --from=build /app/publish ./
 COPY --from=ov-ort /ov/native/ ./
 COPY --from=client /client/dist/NidusVision.Client/browser ./wwwroot
-ENV ASPNETCORE_URLS=http://+:8080
+ENV ASPNETCORE_URLS=http://+:6438
 ENV ASPNETCORE_ENVIRONMENT=Production
 ENV FFMPEG_PATH=/usr/bin/ffmpeg
 ENV LD_LIBRARY_PATH=/app
-EXPOSE 8080
+EXPOSE 6438
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=15s \
-  CMD curl -f http://localhost:8080/health || exit 1
+  CMD curl -f http://localhost:6438/health || exit 1
 ENTRYPOINT ["dotnet", "NidusVision.Web.dll"]

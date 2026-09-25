@@ -4,7 +4,7 @@
     "NidusVision.Web": {
       "commandName": "Project",
       "dotnetRunMessages": true,
-      "applicationUrl": "http://localhost:8080",
+      "applicationUrl": "http://localhost:6438",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }

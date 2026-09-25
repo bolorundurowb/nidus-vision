@@ -1,5 +1,5 @@
 {
-  "/api": { "target": "http://localhost:8080", "secure": false },
-  "/health": { "target": "http://localhost:8080", "secure": false },
-  "/hubs": { "target": "http://localhost:8080", "secure": false, "ws": true }
+  "/api": { "target": "http://localhost:6438", "secure": false },
+  "/health": { "target": "http://localhost:6438", "secure": false },
+  "/hubs": { "target": "http://localhost:6438", "secure": false, "ws": true }
 }

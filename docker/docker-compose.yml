@@ -6,7 +6,7 @@ services:
     container_name: nidus-vision
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "6438:6438"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     devices:
@@ -16,7 +16,7 @@ services:
       - "109"
     environment:
       ASPNETCORE_ENVIRONMENT: Production
-      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_URLS: http://+:6438
       TZ: UTC
       FFMPEG_PATH: /usr/bin/ffmpeg
       Storage__DataDirectory: /app/data
@@ -30,7 +30,7 @@ services:
       - nidus-recordings:/var/nidus/recordings
       - nidus-events:/var/nidus/events
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:6438/health"]
       interval: 30s
       timeout: 5s
       retries: 3
