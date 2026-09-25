@@ -40,17 +40,35 @@ public sealed class RetentionPlannerTests
     {
         var now = DateTimeOffset.Parse("2026-09-23T00:00:00Z");
         var expired = new SegmentRetentionInfo(Guid.CreateVersion7(), now.AddDays(-10), false, 80, "expired.mp4");
-        var oldestRetained = new SegmentRetentionInfo(Guid.CreateVersion7(), now.AddDays(-3), true, 80, "oldest-retained.mp4");
-        var newest = new SegmentRetentionInfo(Guid.CreateVersion7(), now.AddDays(-1), false, 80, "newest.mp4");
+        var oldestDetection = new SegmentRetentionInfo(Guid.CreateVersion7(), now.AddDays(-3), true, 80, "oldest-detection.mp4");
+        var newestUnmarked = new SegmentRetentionInfo(Guid.CreateVersion7(), now.AddDays(-1), false, 80, "newest-unmarked.mp4");
 
         var result = RetentionPlanner.SelectPurge(
-            [newest, expired, oldestRetained],
+            [newestUnmarked, expired, oldestDetection],
             now,
             TimeSpan.FromDays(7),
             TimeSpan.FromDays(30),
             100);
 
-        result.Select(segment => segment.Id).Must().BeSequenceEqual([expired.Id, oldestRetained.Id]);
+        result.Select(segment => segment.Id).Must().BeSequenceEqual([expired.Id, newestUnmarked.Id]);
+    }
+
+    [Fact]
+    public void StoragePrefersUnmarkedOverOlderDetectionsThenDeletesOldest()
+    {
+        var now = DateTimeOffset.Parse("2026-09-23T00:00:00Z");
+        var olderDetection = new SegmentRetentionInfo(Guid.CreateVersion7(), now.AddHours(-3), true, 80, "older-detection.mp4");
+        var newerUnmarked = new SegmentRetentionInfo(Guid.CreateVersion7(), now.AddHours(-1), false, 80, "newer-unmarked.mp4");
+        var newestDetection = new SegmentRetentionInfo(Guid.CreateVersion7(), now.AddMinutes(-10), true, 80, "newest-detection.mp4");
+
+        var result = RetentionPlanner.SelectPurge(
+            [newestDetection, newerUnmarked, olderDetection],
+            now,
+            TimeSpan.FromDays(365),
+            TimeSpan.FromDays(365),
+            100);
+
+        result.Select(segment => segment.Id).Must().BeSequenceEqual([newerUnmarked.Id, olderDetection.Id]);
     }
 
     [Fact]
