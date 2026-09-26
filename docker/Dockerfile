@@ -41,12 +41,17 @@ COPY docker/entrypoint.sh /usr/local/bin/nidus-entrypoint
 RUN sed -i 's/\r$//' /usr/local/bin/nidus-entrypoint \
     && chmod 0755 /usr/local/bin/nidus-entrypoint \
     && id app \
-    && command -v setpriv
+    && command -v setpriv \
+    && command -v find \
+    && command -v readlink
 ENV ASPNETCORE_URLS=http://+:6438
 ENV ASPNETCORE_ENVIRONMENT=Production
 ENV FFMPEG_PATH=/usr/bin/ffmpeg
 ENV LD_LIBRARY_PATH=/app
+ENV Storage__DataDirectory=/app/data
+ENV Storage__RecordingsDirectory=/var/nidus/recordings
+ENV Storage__EventsDirectory=/var/nidus/events
 EXPOSE 6438
-HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=15s \
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=180s \
   CMD curl -f http://localhost:6438/health && curl -f http://localhost:6438/favicon.ico || exit 1
 ENTRYPOINT ["nidus-entrypoint", "dotnet", "NidusVision.Web.dll"]
