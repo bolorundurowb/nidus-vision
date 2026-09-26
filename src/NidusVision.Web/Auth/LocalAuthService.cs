@@ -7,6 +7,9 @@ namespace NidusVision.Web.Auth;
 
 public sealed class LocalAuthService(AppDbContext db, PasswordHasher<LocalUser> hasher)
 {
+    /// <summary>Serializes the exists-check and insert so two first-run requests cannot both create an admin.</summary>
+    private static readonly SemaphoreSlim SetupGate = new(1, 1);
+
     public async Task<bool> IsConfiguredAsync(CancellationToken cancellationToken) =>
         await db.LocalUsers.AnyAsync(cancellationToken);
 
@@ -15,15 +18,23 @@ public sealed class LocalAuthService(AppDbContext db, PasswordHasher<LocalUser> 
         ArgumentException.ThrowIfNullOrWhiteSpace(password);
         ArgumentOutOfRangeException.ThrowIfLessThan(password.Length, 8);
 
-        if (await db.LocalUsers.AnyAsync(cancellationToken))
+        await SetupGate.WaitAsync(cancellationToken);
+        try
         {
-            throw new InvalidOperationException("Password is already configured.");
-        }
+            if (await db.LocalUsers.AnyAsync(cancellationToken))
+            {
+                throw new InvalidOperationException("Password is already configured.");
+            }
 
-        var user = new LocalUser { PasswordHash = "" };
-        user.PasswordHash = hasher.HashPassword(user, password);
-        db.LocalUsers.Add(user);
-        await db.SaveChangesAsync(cancellationToken);
+            var user = new LocalUser { PasswordHash = "" };
+            user.PasswordHash = hasher.HashPassword(user, password);
+            db.LocalUsers.Add(user);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        finally
+        {
+            SetupGate.Release();
+        }
     }
 
     public async Task<bool> VerifyAsync(string password, CancellationToken cancellationToken)
