@@ -11,6 +11,8 @@ services:
       - "host.docker.internal:host-gateway"
     devices:
       - /dev/dri:/dev/dri
+    # The server runs as the non-root `app` user. The entrypoint also grants it the
+    # groups that own /dev/dri; keep these GIDs matching `ls -ln /dev/dri` on the host.
     group_add:
       - "44"
       - "109"

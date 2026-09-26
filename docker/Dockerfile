@@ -37,6 +37,11 @@ RUN apt-get update \
 COPY --from=build /app/publish ./
 COPY --from=ov-ort /ov/native/ ./
 COPY --from=client /client/dist/NidusVision.Client/browser ./wwwroot
+COPY docker/entrypoint.sh /usr/local/bin/nidus-entrypoint
+RUN sed -i 's/\r$//' /usr/local/bin/nidus-entrypoint \
+    && chmod 0755 /usr/local/bin/nidus-entrypoint \
+    && id app \
+    && command -v setpriv
 ENV ASPNETCORE_URLS=http://+:6438
 ENV ASPNETCORE_ENVIRONMENT=Production
 ENV FFMPEG_PATH=/usr/bin/ffmpeg
@@ -44,4 +49,4 @@ ENV LD_LIBRARY_PATH=/app
 EXPOSE 6438
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=15s \
   CMD curl -f http://localhost:6438/health && curl -f http://localhost:6438/favicon.ico || exit 1
-ENTRYPOINT ["dotnet", "NidusVision.Web.dll"]
+ENTRYPOINT ["nidus-entrypoint", "dotnet", "NidusVision.Web.dll"]
