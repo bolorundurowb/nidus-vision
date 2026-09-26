@@ -64,17 +64,19 @@ else
         FfmpegExecutable.FileName);
 }
 
-app.UseAuthentication();
-app.UseAuthorization();
-
 // wwwroot is populated by the Angular production/Docker build. During local API-only
 // `dotnet run`, the SPA is served from ng serve (port 4200) and this folder is absent.
+// Serve those files before authorization. The fallback policy would otherwise reject
+// hashed scripts and styles, which do not match the extensionless anonymous SPA fallback.
 var webRootExists = Directory.Exists(app.Environment.WebRootPath);
 if (webRootExists)
 {
     app.UseDefaultFiles();
     app.UseStaticFiles();
 }
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapNidusHealth();
 app.MapAuthEndpoints();
@@ -149,3 +151,5 @@ static void CleanupLegacyEventsDirectory(
         }
     }
 }
+
+public partial class Program;
