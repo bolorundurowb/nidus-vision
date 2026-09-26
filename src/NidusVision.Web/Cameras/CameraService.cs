@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using NidusVision.Core.Cameras;
 using NidusVision.Core.Contracts;
 using NidusVision.Core.Models;
+using NidusVision.Core.Options;
 using NidusVision.Core.Security;
 using NidusVision.Core.Storage;
 using NidusVision.Data;
@@ -16,7 +18,13 @@ public sealed record CameraStatsSnapshot(string? Bitrate, string? Retention)
     public static readonly CameraStatsSnapshot Empty = new(null, null);
 }
 
-public sealed class CameraService(AppDbContext db, IDataProtectionProvider protection, RtspProbe probe, TimeProvider clock)
+public sealed class CameraService(
+    AppDbContext db,
+    IDataProtectionProvider protection,
+    RtspProbe probe,
+    TimeProvider clock,
+    IOptions<StorageOptions> storage,
+    ILogger<CameraService> logger)
 {
     /// <summary>Newest segments used to average the bitrate; enough to smooth a partial segment.</summary>
     private const int BitrateSampleSegments = 3;
@@ -77,12 +85,14 @@ public sealed class CameraService(AppDbContext db, IDataProtectionProvider prote
 
         db.Cameras.Remove(camera);
         await db.SaveChangesAsync(cancellationToken);
+        DeleteRecordingsDirectory(camera.Id);
         return true;
     }
 
     public Task<ProbeResult> ProbeAsync(CameraWriteRequest request, CancellationToken cancellationToken)
     {
         var parts = RtspUrlCredentials.Split(request.MainRtspUrl);
+        CameraUrl.EnsureSupported(parts.UrlWithoutCredentials, nameof(request.MainRtspUrl));
         var username = RtspUrlCredentials.MeaningfulUserInfo(parts.Username)
             ?? RtspUrlCredentials.MeaningfulUserInfo(request.Username);
         var password = RtspUrlCredentials.MeaningfulUserInfo(parts.Password)
@@ -96,6 +106,11 @@ public sealed class CameraService(AppDbContext db, IDataProtectionProvider prote
     public string ResolveRtspUrl(Camera camera)
     {
         var parts = RtspUrlCredentials.Split(camera.MainRtspUrl);
+        if (!CameraUrl.IsSupported(parts.UrlWithoutCredentials))
+        {
+            throw new InvalidOperationException("The camera URL must be an rtsp:// or rtsps:// address. Edit the camera to fix it.");
+        }
+
         var username = RtspUrlCredentials.MeaningfulUserInfo(camera.Username)
             ?? RtspUrlCredentials.MeaningfulUserInfo(parts.Username);
         var password = UnprotectPassword(camera)
@@ -109,15 +124,22 @@ public sealed class CameraService(AppDbContext db, IDataProtectionProvider prote
         ArgumentException.ThrowIfNullOrWhiteSpace(request.MainRtspUrl);
 
         var main = RtspUrlCredentials.Split(request.MainRtspUrl);
+        CameraUrl.EnsureSupported(main.UrlWithoutCredentials, nameof(request.MainRtspUrl));
+        var sub = string.IsNullOrWhiteSpace(request.SubRtspUrl)
+            ? null
+            : RtspUrlCredentials.Split(request.SubRtspUrl).UrlWithoutCredentials;
+        if (sub is not null)
+        {
+            CameraUrl.EnsureSupported(sub, nameof(request.SubRtspUrl));
+        }
+
         camera.Name = request.Name.Trim();
         camera.Location = string.Equals(request.Location?.Trim(), nameof(CameraLocation.Exterior), StringComparison.OrdinalIgnoreCase)
             ? CameraLocation.Exterior
             : CameraLocation.Interior;
         camera.Enabled = request.Enabled;
         camera.MainRtspUrl = main.UrlWithoutCredentials;
-        camera.SubRtspUrl = string.IsNullOrWhiteSpace(request.SubRtspUrl)
-            ? null
-            : RtspUrlCredentials.Split(request.SubRtspUrl).UrlWithoutCredentials;
+        camera.SubRtspUrl = sub;
 
         if (request.ClearCredentials)
         {
@@ -217,6 +239,25 @@ public sealed class CameraService(AppDbContext db, IDataProtectionProvider prote
             camera.LastFps,
             stats.Bitrate,
             stats.Retention);
+    }
+
+    private void DeleteRecordingsDirectory(Guid cameraId)
+    {
+        var root = Path.GetFullPath(storage.Value.RecordingsDirectory);
+        var directory = Path.Combine(root, cameraId.ToString("N"));
+        if (!StorageRoot.Contains(root, directory) || !Directory.Exists(directory))
+        {
+            return;
+        }
+
+        try
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning(ex, "Could not delete recordings for removed camera {CameraId} at {Directory}.", cameraId, directory);
+        }
     }
 
     private static string BuildUrl(string url, string? username, string? password)

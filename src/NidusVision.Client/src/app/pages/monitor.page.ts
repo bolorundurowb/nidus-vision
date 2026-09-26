@@ -46,11 +46,17 @@ interface TimelineView {
           </button>
         </div>
       </div>
-      <div class="feeds" [attr.data-grid]="grid()">
-        @for (camera of store.cameras().slice(0, grid() * grid()); track camera.id) {
-          <app-live-tile [camera]="camera" />
-        }
-      </div>
+      @if (store.loaded() && store.cameras().length === 0) {
+        <section class="card no-cameras">
+          <p class="muted">{{ store.loadFailed() ? 'Could not load cameras from the server.' : 'No cameras yet. Add one from IP Cameras to start recording.' }}</p>
+        </section>
+      } @else {
+        <div class="feeds" [attr.data-grid]="grid()">
+          @for (camera of store.cameras().slice(0, grid() * grid()); track camera.id) {
+            <app-live-tile [camera]="camera" />
+          }
+        </div>
+      }
       <section class="card timeline">
         <div class="tl-head">
           <div>
@@ -102,6 +108,8 @@ interface TimelineView {
     .bot { bottom: 0.75rem; }
     .chip { background: rgb(0 0 0 / 0.5); padding: 0.2rem 0.5rem; border-radius: 0.35rem; }
     .timeline { padding: 1.25rem; }
+    .no-cameras { padding: 1.25rem; }
+    .no-cameras p { margin: 0; font-size: 0.875rem; }
     h3 { margin: 0; font-size: 1rem; font-weight: 500; }
     .row { margin-top: 0.75rem; display: flex; align-items: center; gap: 0.75rem; }
     .row > span { width: 5rem; font-size: 0.75rem; color: var(--muted-foreground); overflow: hidden; text-overflow: ellipsis; }
