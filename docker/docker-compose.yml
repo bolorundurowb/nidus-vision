@@ -22,7 +22,9 @@ services:
       Storage__DataDirectory: /app/data
       Storage__RecordingsDirectory: /var/nidus/recordings
       Storage__EventsDirectory: /var/nidus/events
-      # NIDUS_PERSON_MODEL: /app/models/person.onnx
+      # Optional override. The image already includes /app/models/person.onnx.
+      # Set this only when the file exists; a missing path turns detection off.
+      # NIDUS_PERSON_MODEL: /models/custom-person.onnx
       # Optional VAAPI video decode (separate from OpenVINO GPU inference):
       # LIBVA_DRIVER_NAME: iHD
     volumes:

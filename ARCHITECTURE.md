@@ -37,7 +37,7 @@ In production Docker, the Angular build is copied into `wwwroot` and served from
 
 ## Data
 
-SQLite file: `{Storage:DataDirectory}/{Storage:DatabaseFileName}` (default `data/nidus.db`), WAL + `busy_timeout=5000`.
+SQLite file: `{Storage:DataDirectory}/{Storage:DatabaseFileName}` (default `data/nidus.db`), WAL + `busy_timeout=5000`. Camera password keys live in `{Storage:DataDirectory}/keys` so they stay with the data volume across container recreates.
 
 | Entity | Purpose |
 |---|---|

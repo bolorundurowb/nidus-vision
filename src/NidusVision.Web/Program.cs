@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.DataProtection;
 using NidusVision.Data;
 using NidusVision.Inference;
 using NidusVision.Streaming;
@@ -17,7 +18,12 @@ var legacyEventsDirectory = builder.Configuration["Storage:EventsDirectory"] ?? 
 
 builder.Services.AddNidusData(builder.Configuration);
 builder.Services.AddNidusAuth();
-builder.Services.AddDataProtection();
+var dataDirectory = Path.GetFullPath(builder.Configuration["Storage:DataDirectory"] ?? "data");
+var keysDirectory = Path.Combine(dataDirectory, "keys");
+Directory.CreateDirectory(keysDirectory);
+builder.Services.AddDataProtection()
+    .SetApplicationName("NidusVision")
+    .PersistKeysToFileSystem(new DirectoryInfo(keysDirectory));
 builder.Services.AddSingleton<RtspProbe>();
 builder.Services.AddScoped<CameraService>();
 builder.Services.AddScoped<LiveStreamService>();

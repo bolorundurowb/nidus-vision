@@ -1,6 +1,7 @@
 # Nidus Vision
 
 [![CI](https://github.com/bolorundurowb/nidus-vision/actions/workflows/ci.yml/badge.svg)](https://github.com/bolorundurowb/nidus-vision/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Self-hosted NVR: live view, continuous recording, and person-tagged playback from RTSP cameras.
 
@@ -38,10 +39,18 @@ services:
       TZ: UTC
       Storage__DataDirectory: /app/data
       Storage__RecordingsDirectory: /var/nidus/recordings
-      # NIDUS_PERSON_MODEL: /app/models/person.onnx
+      # Optional override. The image already includes /app/models/person.onnx.
+      # Set this only when the file exists; a missing path turns detection off.
+      # NIDUS_PERSON_MODEL: /models/custom-person.onnx
     volumes:
       - nidus-data:/app/data
       - nidus-recordings:/var/nidus/recordings
+    healthcheck:
+      test: ["CMD", "sh", "-c", "curl -f http://localhost:6438/health && curl -f http://localhost:6438/favicon.ico"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
 volumes:
   nidus-data:
@@ -70,7 +79,9 @@ Open http://localhost:6438 (or `http://<host-ip>:6438` from another machine). Th
 
 ### 4. Add cameras
 
-Go to **Cameras** and add each camera with its RTSP URL, for example `rtsp://user:pass@192.168.1.50:554/stream1`.
+Go to **Cameras** and add each camera with its RTSP URL, for example `rtsp://user:pass@192.168.1.50:554/stream1`. One URL is used for both recording and live view.
+
+Use an H.264 stream. Recording copies the video and drops the audio, and the browser plays that same stream. H.265/HEVC is stored if that is what the camera sends, but Chrome and Firefox will not play it. If the camera's main stream is H.265, paste its H.264 URL instead.
 
 The URL must be reachable from the **container**:
 
@@ -92,14 +103,63 @@ docker compose pull
 docker compose up -d
 ```
 
-Data and recordings live in the named volumes and survive image updates. To upgrade to a specific release, change the `image:` tag and rerun the two commands above.
+Data and recordings live in the named volumes and survive image updates. On startup the new container applies database migrations before it serves traffic. To upgrade to a specific release, change the `image:` tag and rerun the two commands above. Read [CHANGELOG.md](CHANGELOG.md) before moving off `latest`.
 
-### Notes
+Camera passwords are encrypted with keys in the `nidus-data` volume. Images built before those keys were stored there kept them in the container filesystem, which is discarded on recreate. After the first update to a build that includes this, open each camera and save the RTSP password again.
 
-- **GPU vs CPU.** The image ships ONNX Runtime with the OpenVINO provider. With `/dev/dri` mapped it runs person detection on an Intel iGPU; without it, detection falls back to CPU. The `group_add` IDs must match the host's `video` and `render` groups (`getent group video render`).
-- **Ports.** The app listens on `6438` inside the container. Change the left side of the `ports` mapping to expose it elsewhere.
+## Scope
+
+Nidus Vision records the camera stream continuously, shows a live grid, tags segments where a person was detected, and deletes old footage by age and an optional disk cap. From **Recordings** you can play a segment, download that MP4, or save a screenshot.
+
+It does not discover cameras with ONVIF, draw detection zones, send phone or webhook alerts, trim a clip out of a segment, record audio, or add users beyond the single admin.
+
+## Capacity
+
+Recording does not re-encode, and audio is dropped, so disk use follows the camera's video bitrate. Multiply Mbit/s by 11 for a rough GB-per-day figure: a 4 Mbit/s stream is about 43 GB per camera per day. The Cameras page shows the measured bitrate after the stream connects. Default segments are 15 minutes.
+
+Person detection is on by default and samples about one frame per second at 640×640. That work is separate from recording. Each live tile you open runs its own FFmpeg process.
+
+The published image is Linux x86-64 and runs ONNX Runtime with OpenVINO. On a Linux host with an Intel iGPU, map `/dev/dri` and set `group_add` to the host's `video` and `render` group IDs (`getent group video render`; the example uses `44` and `109`). Delete `devices` and `group_add` to run detection on CPU, including under Docker Desktop where `/dev/dri` is absent. A Raspberry Pi or an NVIDIA GPU is outside this image.
+
+## Backup
+
+Stop the container first. SQLite uses WAL, and a copy taken while the app is running can produce a database that will not open.
+
+```bash
+docker compose stop
+mkdir -p backup/data backup/recordings
+# Names from `docker volume ls`. Compose prefixes them with the project directory.
+docker run --rm -v PROJECT_nidus-data:/from -v "$PWD/backup/data":/to alpine cp -a /from/. /to/
+docker run --rm -v PROJECT_nidus-recordings:/from -v "$PWD/backup/recordings":/to alpine cp -a /from/. /to/
+docker compose start
+```
+
+`backup/data` holds the database, the admin password, camera configuration, and the encryption keys for camera passwords. `backup/recordings` holds the MP4 files. Restore by stopping the container and copying those directories back onto the same volumes, with the `/from` and `/to` mounts swapped.
+
+Removing the `nidus-data` volume deletes the admin password, cameras, and the recording index. The MP4s in `nidus-recordings` stay on disk, and there is no reindex: Recordings will not list them again.
+
+## Network
+
+The app speaks plain HTTP and keeps a long-lived cookie for the one admin account. There is no second factor. Keep port 6438 on the LAN, or bind it to localhost and terminate TLS at a reverse proxy. Do not port-forward 6438 on the router. Report vulnerabilities as described in [SECURITY.md](SECURITY.md).
+
+To expose it only through Caddy on the same host, publish the port on localhost:
+
+```yaml
+ports:
+  - "127.0.0.1:6438:6438"
+```
+
+```caddyfile
+nvr.example.com {
+  reverse_proxy localhost:6438
+}
+```
+
+## Notes
+
+- **Clock.** `TZ` sets the container clock, which names segment files in UTC. Times in the UI follow the browser's time zone.
 - **Logs.** `docker compose logs -f nidus-vision`.
-- **Reset the admin password.** Stop the container and remove the `nidus-data` volume (`docker volume rm <project>_nidus-data`). This also deletes camera configuration and the recording index, but not the video files in `nidus-recordings`.
+- **Reset the admin password.** Stop the container and remove the `nidus-data` volume (`docker volume rm <project>_nidus-data`). This also deletes camera configuration, encryption keys, and the recording index. Video files in `nidus-recordings` remain, unindexed.
 
 ## Build from source
 

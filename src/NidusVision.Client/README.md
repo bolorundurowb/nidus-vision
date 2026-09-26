@@ -1,59 +1,12 @@
-# NidusVisionClient
+# Nidus Vision client
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 21.2.13.
+Angular SPA for Nidus Vision. It is not a standalone app: API calls go to the ASP.NET host.
 
-## Development server
-
-To start a local development server, run:
+Local development runs the API on port **6438** and this app on port **4200**. The dev server proxies `/api`, `/health`, and `/hubs` to the API. Setup, Docker, and tests are in the [repository README](../../README.md) and [ARCHITECTURE.md](../../ARCHITECTURE.md).
 
 ```bash
-ng serve
+npm install
+npm start
 ```
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
-
-## Code scaffolding
-
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
-
-```bash
-ng generate component component-name
-```
-
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
-
-```bash
-ng generate --help
-```
-
-## Building
-
-To build the project run:
-
-```bash
-ng build
-```
-
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
-
-## Running unit tests
-
-To execute unit tests with the [Vitest](https://vitest.dev/) test runner, use the following command:
-
-```bash
-ng test
-```
-
-## Running end-to-end tests
-
-For end-to-end (e2e) testing, run:
-
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
-
-## Additional Resources
-
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+Open http://localhost:4200 after the API is running. Production and Docker builds compile this project into the host's `wwwroot`.
