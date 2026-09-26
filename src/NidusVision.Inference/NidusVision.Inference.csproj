@@ -25,7 +25,7 @@
         <PackageReference Include="Intel.ML.OnnxRuntime.OpenVino" Version="1.24.1" />
       </ItemGroup>
       <ItemGroup Condition="!$([MSBuild]::IsOSPlatform('Windows'))">
-        <PackageReference Include="Microsoft.ML.OnnxRuntime.Managed" Version="1.24.1" />
+        <PackageReference Include="Microsoft.ML.OnnxRuntime.Managed" Version="1.24.2" />
       </ItemGroup>
     </When>
     <When Condition="'$(OnnxRuntimeProvider)' == 'DirectML'">
