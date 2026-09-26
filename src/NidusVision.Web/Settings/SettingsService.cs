@@ -26,13 +26,23 @@ public sealed class SettingsService(AppDbContext db, IOptions<StorageOptions> st
             ArgumentOutOfRangeException.ThrowIfLessThan(maxStorageBytes, 1);
         }
 
+        if (!float.IsFinite(request.SampleFps))
+        {
+            throw new ArgumentOutOfRangeException(nameof(request.SampleFps), "Sample FPS must be a finite number.");
+        }
+
+        if (!float.IsFinite(request.ConfidenceThreshold))
+        {
+            throw new ArgumentOutOfRangeException(nameof(request.ConfidenceThreshold), "Confidence threshold must be a finite number.");
+        }
+
         var row = await db.AppSettings.OrderBy(s => s.Id).FirstAsync(cancellationToken);
         row.GeneralRetentionDays = request.GeneralRetentionDays;
         row.DetectionRetentionDays = request.DetectionRetentionDays;
         row.MaxStorageBytes = request.MaxStorageBytes;
         row.InferenceEnabled = request.InferenceEnabled;
-        row.SampleFps = request.SampleFps;
-        row.ConfidenceThreshold = request.ConfidenceThreshold;
+        row.SampleFps = InferenceLimits.ClampSampleFps(request.SampleFps);
+        row.ConfidenceThreshold = InferenceLimits.ClampConfidence(request.ConfidenceThreshold);
         await db.SaveChangesAsync(cancellationToken);
         return ToResponse(row);
     }

@@ -21,6 +21,11 @@ import { AppIcon } from '../ui/app-icon';
           <app-icon name="plus" />Add camera
         </button>
       </div>
+      @if (store.loaded() && store.cameras().length === 0) {
+        <section class="card no-cameras">
+          <p class="muted">{{ store.loadFailed() ? 'Could not load cameras from the server.' : 'No cameras yet. Use Add camera to connect an RTSP stream.' }}</p>
+        </section>
+      }
       <div class="grid cams">
         @for (camera of store.cameras(); track camera.id) {
           <article class="card cam">
@@ -142,6 +147,8 @@ import { AppIcon } from '../ui/app-icon';
     dl div { display: flex; justify-content: space-between; margin-bottom: 0.35rem; }
     dt { color: var(--muted-foreground); }
     .diag { padding: 1rem; }
+    .no-cameras { padding: 1rem; }
+    .no-cameras p { margin: 0; font-size: 0.875rem; }
     .table-wrap { overflow-x: auto; }
     table { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 0.875rem; text-align: left; }
     th { color: var(--muted-foreground); font-size: 0.75rem; font-weight: 500; padding: 0.75rem 0.5rem; }

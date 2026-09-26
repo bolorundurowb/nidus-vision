@@ -1,6 +1,9 @@
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using NidusVision.Core.Models;
+using NidusVision.Core.Options;
 using NidusVision.Data;
 using NidusVision.Streaming;
 using NidusVision.Web.Cameras;
@@ -78,7 +81,13 @@ public sealed class CameraStatsResponseTests : SqliteTestBase
     }
 
     private CameraService CreateService(AppDbContext db) =>
-        new(db, new EphemeralDataProtectionProvider(), new RtspProbe(), new FixedTimeProvider(Now));
+        new(
+            db,
+            new EphemeralDataProtectionProvider(),
+            new RtspProbe(),
+            new FixedTimeProvider(Now),
+            Options.Create(new StorageOptions()),
+            NullLogger<CameraService>.Instance);
 
     private static Camera AddCamera(AppDbContext db, string? resolution, int? fps)
     {
