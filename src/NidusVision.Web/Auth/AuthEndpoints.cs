@@ -43,18 +43,29 @@ internal static class AuthEndpoints
         return TypedResults.Ok(new AuthStatusResponse(true, true));
     }
 
-    private static async Task<IResult> Login(LocalAuthService auth, [FromBody] PasswordRequest request, HttpContext http, CancellationToken cancellationToken)
+    private static async Task<IResult> Login(LocalAuthService auth, LoginThrottle throttle, [FromBody] PasswordRequest request, HttpContext http, CancellationToken cancellationToken)
     {
+        var client = http.Connection.RemoteIpAddress;
+        if (throttle.IsLockedOut(client, out var retryAfter))
+        {
+            http.Response.Headers.RetryAfter = Math.Ceiling(retryAfter.TotalSeconds).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            return TypedResults.Json(
+                new { message = "Too many failed sign-in attempts. Try again shortly." },
+                statusCode: StatusCodes.Status429TooManyRequests);
+        }
+
         if (!await auth.IsConfiguredAsync(cancellationToken))
         {
             return TypedResults.BadRequest(new { message = "Set a password first." });
         }
 
-        if (!await auth.VerifyAsync(request.Password, cancellationToken))
+        if (string.IsNullOrWhiteSpace(request.Password) || !await auth.VerifyAsync(request.Password, cancellationToken))
         {
+            throttle.RecordFailure(client);
             return TypedResults.Unauthorized();
         }
 
+        throttle.RecordSuccess(client);
         await SignInAsync(http);
         return TypedResults.Ok(new AuthStatusResponse(true, true));
     }
@@ -83,6 +94,7 @@ internal static class AuthServiceCollectionExtensions
     {
         services.AddSingleton<PasswordHasher<LocalUser>>();
         services.AddScoped<LocalAuthService>();
+        services.AddSingleton<LoginThrottle>();
         services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
             .AddCookie(options =>
             {
