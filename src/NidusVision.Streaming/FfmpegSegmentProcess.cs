@@ -70,7 +70,7 @@ public sealed class FfmpegSegmentProcess
 
             if (detectionSampleFps is > 0)
             {
-                var fps = Math.Clamp(detectionSampleFps.Value, 0.2f, 5f).ToString("0.###", CultureInfo.InvariantCulture);
+                var fps = NidusVision.Core.Options.InferenceLimits.ClampSampleFps(detectionSampleFps.Value).ToString("0.###", CultureInfo.InvariantCulture);
                 startInfo.ArgumentList.Add("-an");
                 startInfo.ArgumentList.Add("-vf");
                 startInfo.ArgumentList.Add(

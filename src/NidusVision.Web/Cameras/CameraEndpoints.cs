@@ -25,18 +25,46 @@ internal static class CameraEndpoints
         return camera is null ? TypedResults.NotFound() : TypedResults.Ok(camera);
     }
 
-    private static async Task<IResult> Create(CameraService cameras, [FromBody] CameraWriteRequest request, CancellationToken cancellationToken) =>
-        TypedResults.Created($"/api/cameras", await cameras.CreateAsync(request, cancellationToken));
+    private static async Task<IResult> Create(CameraService cameras, [FromBody] CameraWriteRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return TypedResults.Created($"/api/cameras", await cameras.CreateAsync(request, cancellationToken));
+        }
+        catch (ArgumentException ex)
+        {
+            return InvalidRequest(ex);
+        }
+    }
 
     private static async Task<IResult> Update(Guid id, CameraService cameras, [FromBody] CameraWriteRequest request, CancellationToken cancellationToken)
     {
-        var camera = await cameras.UpdateAsync(id, request, cancellationToken);
-        return camera is null ? TypedResults.NotFound() : TypedResults.Ok(camera);
+        try
+        {
+            var camera = await cameras.UpdateAsync(id, request, cancellationToken);
+            return camera is null ? TypedResults.NotFound() : TypedResults.Ok(camera);
+        }
+        catch (ArgumentException ex)
+        {
+            return InvalidRequest(ex);
+        }
     }
 
     private static async Task<IResult> Delete(Guid id, CameraService cameras, CancellationToken cancellationToken) =>
         await cameras.DeleteAsync(id, cancellationToken) ? TypedResults.NoContent() : TypedResults.NotFound();
 
-    private static async Task<IResult> Probe(CameraService cameras, [FromBody] CameraWriteRequest request, CancellationToken cancellationToken) =>
-        TypedResults.Ok(await cameras.ProbeAsync(request, cancellationToken));
+    private static async Task<IResult> Probe(CameraService cameras, [FromBody] CameraWriteRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return TypedResults.Ok(await cameras.ProbeAsync(request, cancellationToken));
+        }
+        catch (ArgumentException ex)
+        {
+            return InvalidRequest(ex);
+        }
+    }
+
+    private static IResult InvalidRequest(ArgumentException ex) =>
+        TypedResults.BadRequest(new { message = ex.Message });
 }

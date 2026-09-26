@@ -2,13 +2,19 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using NidusVision.Core.Options;
 using NidusVision.Core.Retention;
 using NidusVision.Core.Storage;
 using NidusVision.Data;
 
 namespace NidusVision.Data;
 
-public sealed class RetentionWorker(IServiceScopeFactory scopes, TimeProvider time, ILogger<RetentionWorker> logger) : BackgroundService
+public sealed class RetentionWorker(
+    IServiceScopeFactory scopes,
+    TimeProvider time,
+    IOptions<StorageOptions> storage,
+    ILogger<RetentionWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -45,11 +51,7 @@ public sealed class RetentionWorker(IServiceScopeFactory scopes, TimeProvider ti
         foreach (var item in purge)
         {
             var entity = await db.RecordingSegments.FindAsync([item.Id], cancellationToken);
-            if (File.Exists(item.Path))
-            {
-                File.Delete(item.Path);
-            }
-
+            DeleteIfExists(item.Path);
             DeleteIfExists(RecordingPath.ThumbnailFor(item.Path));
             DeleteIfExists(entity?.ThumbnailPath);
 
@@ -75,11 +77,19 @@ public sealed class RetentionWorker(IServiceScopeFactory scopes, TimeProvider ti
             expiredDetections.Count);
     }
 
-    private static void DeleteIfExists(string? path)
+    private void DeleteIfExists(string? path)
     {
-        if (path is not null && File.Exists(path))
+        if (path is null || !File.Exists(path))
         {
-            File.Delete(path);
+            return;
         }
+
+        if (!StorageRoot.Contains(storage.Value.RecordingsDirectory, path))
+        {
+            logger.LogWarning("Retention skipped {Path} because it is outside the recordings directory.", path);
+            return;
+        }
+
+        File.Delete(path);
     }
 }
