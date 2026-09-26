@@ -31,6 +31,17 @@ public sealed class SpaStaticFileAuthTests : IClassFixture<SpaStaticFileAuthTest
     }
 
     [Fact]
+    public async Task AnonymousHealthDoesNotExposeTheFfmpegPath()
+    {
+        var response = await _client.GetAsync("/health");
+
+        response.StatusCode.Must().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Must().Contain("ffmpegAvailable");
+        body.Contains("ffmpegPath", StringComparison.OrdinalIgnoreCase).Must().BeFalse();
+    }
+
+    [Fact]
     public async Task AnonymousCameraApiStaysUnauthorized()
     {
         var response = await _client.GetAsync("/api/cameras");
