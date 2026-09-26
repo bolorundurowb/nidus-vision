@@ -107,6 +107,8 @@ Data and recordings live in the named volumes and survive image updates. On star
 
 Camera passwords are encrypted with keys in the `nidus-data` volume. Images built before those keys were stored there kept them in the container filesystem, which is discarded on recreate. After the first update to a build that includes this, open each camera and save the RTSP password again.
 
+The server runs as the unprivileged `app` user. The entrypoint starts as root only long enough to hand `nidus-data` and `nidus-recordings` to that user, then drops privileges. Volumes written by older images that ran as root are re-owned once, on the first start after the update; on a large recordings volume that first start can take several minutes before the web UI answers. A `.nidus-owner` file in each volume stops it from happening again.
+
 ## Scope
 
 Nidus Vision records the camera stream continuously, shows a live grid, tags segments where a person was detected, and deletes old footage by age and an optional disk cap. From **Recordings** you can play a segment, download that MP4, or save a screenshot.
