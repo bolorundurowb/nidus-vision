@@ -158,10 +158,14 @@ public sealed class RecordingStorageTests : IDisposable
         {
             RecordingsDirectory = recordings,
         }), TimeProvider.System);
+        var beforeIndex = await library.SearchRecordingsAsync(null, null, 1, 12, null, null, null, CancellationToken.None);
+
         // Act
+        await library.IndexUntrackedRecordingsAsync(CancellationToken.None);
         var result = await library.SearchRecordingsAsync(null, null, 1, 12, null, null, null, CancellationToken.None);
 
         // Assert
+        beforeIndex.TotalCount.Must().Be(0);
         result.Items.Must().HaveCount(1);
         result.TotalCount.Must().Be(1);
         var recording = result.Items[0];

@@ -29,7 +29,6 @@ public sealed class RecordingLibraryService(AppDbContext db, IOptions<StorageOpt
         bool? hasHuman,
         CancellationToken cancellationToken)
     {
-        await IndexUntrackedRecordingsAsync(cancellationToken);
         (page, pageSize) = NormalizePage(page, pageSize);
 
         var query = db.RecordingSegments
@@ -138,7 +137,11 @@ public sealed class RecordingLibraryService(AppDbContext db, IOptions<StorageOpt
             ? path
             : null;
 
-    private async Task IndexUntrackedRecordingsAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// Recovery path for MP4s the ingest file watcher missed. Walks the whole recordings tree,
+    /// so it runs on the background worker rather than on library requests.
+    /// </summary>
+    public async Task IndexUntrackedRecordingsAsync(CancellationToken cancellationToken)
     {
         var root = Path.GetFullPath(storage.Value.RecordingsDirectory);
         if (!Directory.Exists(root))

@@ -36,6 +36,7 @@ public sealed class ThumbnailWorker(
     internal async Task RunOnceAsync(CancellationToken cancellationToken)
     {
         await using var scope = scopes.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<RecordingLibraryService>().IndexUntrackedRecordingsAsync(cancellationToken);
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         _ = await FillRecordingThumbnailsAsync(db, VideoThumbnailExtractor.BatchSize, cancellationToken);
         if (db.ChangeTracker.HasChanges())
