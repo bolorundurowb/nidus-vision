@@ -43,5 +43,5 @@ ENV FFMPEG_PATH=/usr/bin/ffmpeg
 ENV LD_LIBRARY_PATH=/app
 EXPOSE 6438
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=15s \
-  CMD curl -f http://localhost:6438/health || exit 1
+  CMD curl -f http://localhost:6438/health && curl -f http://localhost:6438/favicon.ico || exit 1
 ENTRYPOINT ["dotnet", "NidusVision.Web.dll"]
