@@ -30,7 +30,7 @@ services:
       - nidus-recordings:/var/nidus/recordings
       - nidus-events:/var/nidus/events
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6438/health"]
+      test: ["CMD", "sh", "-c", "curl -f http://localhost:6438/health && curl -f http://localhost:6438/favicon.ico"]
       interval: 30s
       timeout: 5s
       retries: 3
