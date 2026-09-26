@@ -119,7 +119,7 @@ public sealed class RecordingLibraryService(AppDbContext db, IOptions<StorageOpt
             .Where(segment => segment.Id == id)
             .Select(segment => segment.Path)
             .FirstOrDefaultAsync(cancellationToken);
-        return path is not null && File.Exists(path) ? path : null;
+        return ServableFile(path);
     }
 
     public async Task<string?> ResolveRecordingThumbnailPathAsync(Guid id, CancellationToken cancellationToken)
@@ -128,8 +128,15 @@ public sealed class RecordingLibraryService(AppDbContext db, IOptions<StorageOpt
             .Where(segment => segment.Id == id)
             .Select(segment => segment.ThumbnailPath)
             .FirstOrDefaultAsync(cancellationToken);
-        return path is not null && File.Exists(path) ? path : null;
+        return ServableFile(path);
     }
+
+    private string? ServableFile(string? path) =>
+        path is not null
+        && StorageRoot.Contains(storage.Value.RecordingsDirectory, path)
+        && File.Exists(path)
+            ? path
+            : null;
 
     private async Task IndexUntrackedRecordingsAsync(CancellationToken cancellationToken)
     {
