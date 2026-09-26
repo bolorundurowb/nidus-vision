@@ -1,12 +1,15 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
 import { CameraApi, CameraWrite, cameraWrite } from './api/camera.api';
-import { CAMERA_SEED, CameraItem, CameraStatus } from './models';
+import { CameraItem, CameraStatus } from './models';
 
 @Injectable({ providedIn: 'root' })
 export class CameraStore {
   private readonly api = inject(CameraApi);
-  readonly cameras = signal<CameraItem[]>(CAMERA_SEED);
+  readonly cameras = signal<CameraItem[]>([]);
+  readonly loaded = signal(false);
+  /** True after the last list request failed; the list is left empty rather than guessed. */
+  readonly loadFailed = signal(false);
   readonly recordingCount = computed(() => this.cameras().filter(c => c.status === 'recording').length);
   readonly selectedId = signal<string | null>(null);
 
@@ -30,10 +33,14 @@ export class CameraStore {
     try {
       const list = await this.api.list();
       this.cameras.set(list.map(c => this.api.toItem(c)));
+      this.loadFailed.set(false);
       return true;
     } catch {
-      // Keep mock seed when the API is offline (ng serve without backend).
+      this.cameras.set([]);
+      this.loadFailed.set(true);
       return false;
+    } finally {
+      this.loaded.set(true);
     }
   }
 
