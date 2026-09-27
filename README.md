@@ -119,7 +119,7 @@ It does not discover cameras with ONVIF, draw detection zones, send phone or web
 
 Recording does not re-encode, and audio is dropped, so disk use follows the camera's video bitrate. Multiply Mbit/s by 11 for a rough GB-per-day figure: a 4 Mbit/s stream is about 43 GB per camera per day. The Cameras page shows the measured bitrate after the stream connects. Default segments are 15 minutes.
 
-Person detection is on by default and samples about one frame per second at 640×640. That work is separate from recording. Each live tile you open runs its own FFmpeg process.
+Person detection is on by default and samples about one frame per second at 640×640. That work is separate from recording. The model skips a sample when the content is actually stable. A burned-in clock or night noise does not. Each live tile you open runs its own FFmpeg process.
 
 The published image is Linux x86-64 and runs ONNX Runtime with OpenVINO. On a Linux host with an Intel iGPU, map `/dev/dri` and set `group_add` to the host's `video` and `render` group IDs (`getent group video render`; the example uses `44` and `109`). Delete `devices` and `group_add` to run detection on CPU, including under Docker Desktop where `/dev/dri` is absent. A Raspberry Pi or an NVIDIA GPU is outside this image.
 
