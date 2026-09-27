@@ -17,6 +17,9 @@ public sealed class DetectionHostedService(
     ILogger<DetectionHostedService> logger) : BackgroundService
 {
     private readonly DetectionPresenceTracker _presence = new();
+    private readonly FrameMotionGate _motion = new();
+    private readonly Dictionary<Guid, MotionWindow> _motionWindows = [];
+    private DateTimeOffset _motionLoggedAt = DateTimeOffset.UtcNow;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -25,6 +28,7 @@ public sealed class DetectionHostedService(
         {
             try
             {
+                LogMotionWindows();
                 var pending = frames.Drain();
                 if (pending.Count == 0 || !detector.IsAvailable)
                 {
@@ -51,7 +55,7 @@ public sealed class DetectionHostedService(
         }
     }
 
-    private async Task HandleFrameAsync(
+    internal async Task HandleFrameAsync(
         AppDbContext db,
         DetectionFrame frame,
         float threshold,
@@ -66,6 +70,21 @@ public sealed class DetectionHostedService(
             return;
         }
 
+        var presenceOpen = _presence.HasOpenInterval(frame.CameraId);
+        if (!_motion.ShouldRunModel(
+                frame.CameraId,
+                frame.Rgb24,
+                frame.Width,
+                frame.Height,
+                frame.SourceWidth,
+                frame.SourceHeight,
+                frame.CapturedAt,
+                presenceOpen))
+        {
+            NoteMotion(frame.CameraId, ran: false);
+            return;
+        }
+
         var boxes = detector.Detect(
             frame.Rgb24,
             frame.Width,
@@ -73,6 +92,14 @@ public sealed class DetectionHostedService(
             frame.SourceWidth,
             frame.SourceHeight,
             threshold);
+        _motion.Remember(
+            frame.CameraId,
+            frame.Width,
+            frame.Height,
+            frame.SourceWidth,
+            frame.SourceHeight,
+            frame.CapturedAt);
+        NoteMotion(frame.CameraId, ran: true);
         var update = _presence.Observe(frame.CameraId, boxes, frame.CapturedAt);
         if (update.Kind is PresenceKind.None)
         {
@@ -94,6 +121,53 @@ public sealed class DetectionHostedService(
         }
 
         await UpdateDetectionAsync(db, update, cancellationToken);
+    }
+
+    internal bool HasOpenInterval(Guid cameraId) => _presence.HasOpenInterval(cameraId);
+
+    private void NoteMotion(Guid cameraId, bool ran)
+    {
+        if (!_motionWindows.TryGetValue(cameraId, out var window))
+        {
+            window = new MotionWindow();
+            _motionWindows[cameraId] = window;
+        }
+
+        if (ran)
+        {
+            window.Runs++;
+        }
+        else
+        {
+            window.Skips++;
+        }
+    }
+
+    private void LogMotionWindows()
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (now - _motionLoggedAt < TimeSpan.FromMinutes(1) || _motionWindows.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var (cameraId, window) in _motionWindows)
+        {
+            logger.LogInformation(
+                "Motion gate for camera {CameraId}: {Runs} model runs and {Skips} skips.",
+                cameraId,
+                window.Runs,
+                window.Skips);
+        }
+
+        _motionWindows.Clear();
+        _motionLoggedAt = now;
+    }
+
+    private sealed class MotionWindow
+    {
+        public int Runs { get; set; }
+        public int Skips { get; set; }
     }
 
     public async Task PersistDetectionAsync(
