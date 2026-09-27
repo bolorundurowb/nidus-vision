@@ -39,4 +39,23 @@ public sealed class DetectionPresenceTrackerTests
         last.Kind.Must().Be(PresenceKind.Closed);
         last.EventId.Must().Be(opened.EventId);
     }
+
+    [Fact]
+    public void OpenIntervalStaysThroughTheMissStreak()
+    {
+        var tracker = new DetectionPresenceTracker();
+        var camera = Guid.CreateVersion7();
+        var start = DateTimeOffset.Parse("2026-09-25T12:00:00Z");
+        tracker.Observe(camera, [new BoundingBox(1, 1, 2, 2, 0.7f)], start);
+
+        tracker.HasOpenInterval(camera).Must().BeTrue();
+        for (var i = 1; i < DetectionPresenceTracker.MissesBeforeClose; i++)
+        {
+            tracker.Observe(camera, [], start.AddSeconds(i));
+            tracker.HasOpenInterval(camera).Must().BeTrue();
+        }
+
+        tracker.Observe(camera, [], start.AddSeconds(DetectionPresenceTracker.MissesBeforeClose));
+        tracker.HasOpenInterval(camera).Must().BeFalse();
+    }
 }

@@ -8,6 +8,9 @@ public sealed class DetectionPresenceTracker
 
     private readonly Dictionary<Guid, CameraPresence> _cameras = [];
 
+    public bool HasOpenInterval(Guid cameraId) =>
+        _cameras.TryGetValue(cameraId, out var state) && state.OpenEventId is not null;
+
     public PresenceUpdate Observe(
         Guid cameraId,
         IReadOnlyList<BoundingBox> boxes,

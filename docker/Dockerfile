@@ -27,13 +27,18 @@ RUN dotnet publish src/NidusVision.Web/NidusVision.Web.csproj -c Release -o /app
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
+# libze1 and libze-intel-gpu1 are the Level Zero runtime OpenVINO needs to see an
+# Intel iGPU. VA-API (what Jellyfin uses) is a different driver and is not enough.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         curl ffmpeg \
         libtbb12 libgomp1 \
         ocl-icd-libopencl1 intel-opencl-icd \
+        libze1 libze-intel-gpu1 \
     && rm -rf /var/lib/apt/lists/* \
-    && test -x /usr/bin/ffmpeg
+    && test -x /usr/bin/ffmpeg \
+    && ldconfig -p | grep -q 'libze_loader.so.1' \
+    && ldconfig -p | grep -q 'libze_intel_gpu.so.1'
 COPY --from=build /app/publish ./
 COPY --from=ov-ort /ov/native/ ./
 COPY --from=client /client/dist/NidusVision.Client/browser ./wwwroot

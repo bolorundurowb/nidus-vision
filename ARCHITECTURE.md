@@ -86,6 +86,7 @@ Camera RTSP URLs must be reachable from the process (container). Use a LAN IP, n
 - Model file: `models/person.onnx`, or `NIDUS_PERSON_MODEL`.
 - Decode: YOLO-style boxes, letterbox inverse, confidence threshold from settings.
 - `DetectionPresenceTracker` opens/closes `DetectionInterval` rows instead of writing one row per frame.
+- `FrameMotionGate` skips a frame when the content rectangle is unchanged since the last model run. A skip is not a miss, and `EndUtc` advances only when the model runs and still sees someone. The quiet-frame gap is at least 2 seconds while an interval is open and at least 10 seconds when it is not, and only when that camera is drained on time. Closing takes three empty model runs, about four seconds after the person leaves when the loop keeps up, so a following visitor inside that window shares one interval and one `HasHuman` span. A burned-in clock or night noise keeps the model on every sample.
 - Segments can be marked `HasHuman` when intervals overlap them.
 
 ### ONNX execution providers
