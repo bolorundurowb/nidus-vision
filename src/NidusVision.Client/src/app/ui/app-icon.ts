@@ -4,6 +4,8 @@ export type AppIconName =
   | 'activity'
   | 'archive'
   | 'camera'
+  | 'chevron-left'
+  | 'chevron-right'
   | 'check'
   | 'download'
   | 'ellipsis-vertical'
@@ -45,6 +47,12 @@ export type AppIconName =
         @case ('camera') {
           <path d="M14.5 4 16 7h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h3l1.5-3z" />
           <circle cx="12" cy="13" r="3" />
+        }
+        @case ('chevron-left') {
+          <path d="m15 18-6-6 6-6" />
+        }
+        @case ('chevron-right') {
+          <path d="m9 18 6-6-6-6" />
         }
         @case ('check') {
           <path d="M20 6 9 17l-5-5" />
