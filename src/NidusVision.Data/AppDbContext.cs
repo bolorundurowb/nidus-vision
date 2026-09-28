@@ -22,6 +22,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Name).HasMaxLength(128);
+            entity.Property(e => e.RecordingEnabled).HasDefaultValue(true);
             entity.Property(e => e.Location).HasConversion<string>().HasMaxLength(16);
             entity.Property(e => e.MainRtspUrl).HasMaxLength(1024);
             entity.Property(e => e.SubRtspUrl).HasMaxLength(1024);
