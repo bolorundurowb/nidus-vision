@@ -433,13 +433,25 @@ public sealed class CameraIngestHostedService(
         DateTimeOffset endUtc,
         CancellationToken cancellationToken)
     {
-        var open = await db.RecordingSegments
-            .Where(segment => segment.CameraId == cameraId && !segment.IsFinalized)
+        var segments = await db.RecordingSegments
+            .Where(segment => segment.CameraId == cameraId)
             .ToListAsync(cancellationToken);
+        var open = segments.Where(segment => !segment.IsFinalized).ToList();
         foreach (var segment in open)
         {
             ApplyFinalize(segment, endUtc);
-            PlaceFinalized(recordingsDirectory, segment);
+            try
+            {
+                var claim = PlaceFinalized(recordingsDirectory, segment, segments);
+                if (claim.DropDuplicate)
+                {
+                    db.RecordingSegments.Remove(segment);
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Could not place finalized recording {Path} for camera {CameraId}. Leaving it in place.", segment.Path, cameraId);
+            }
         }
 
         if (open.Count > 0)
@@ -463,8 +475,16 @@ public sealed class CameraIngestHostedService(
                 return;
             }
 
+            var siblings = await db.RecordingSegments
+                .Where(item => item.CameraId == cameraId)
+                .ToListAsync(cancellationToken);
             ApplyFinalize(segment, endUtc);
-            PlaceFinalized(recordings, segment);
+            var claim = PlaceFinalized(recordings, segment, siblings);
+            if (claim.DropDuplicate)
+            {
+                db.RecordingSegments.Remove(segment);
+            }
+
             await db.SaveChangesAsync(cancellationToken);
             RemoveEmptiedDirectories(recordings, cameraId, [segment]);
         }
@@ -495,11 +515,24 @@ public sealed class CameraIngestHostedService(
             }
             var segments = await db.RecordingSegments.Where(segment => segment.CameraId == camera.Id).ToListAsync(cancellationToken);
             var changed = false;
-            foreach (var segment in segments.Where(segment => segment.IsFinalized))
+            foreach (var segment in segments.Where(segment => segment.IsFinalized).ToList())
             {
-                if (PlaceFinalized(recordings, segment))
+                try
                 {
-                    changed = true;
+                    var claim = PlaceFinalized(recordings, segment, segments);
+                    if (claim.DropDuplicate)
+                    {
+                        db.RecordingSegments.Remove(segment);
+                        changed = true;
+                    }
+                    else if (claim.Changed)
+                    {
+                        changed = true;
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    logger.LogWarning(ex, "Could not sort recording {Path} for camera {CameraId}. Leaving it in place.", segment.Path, camera.Id);
                 }
             }
 
@@ -571,12 +604,15 @@ public sealed class CameraIngestHostedService(
         return true;
     }
 
-    private bool PlaceFinalized(string recordingsDirectory, RecordingSegment segment)
+    private RecordingPathClaim PlaceFinalized(
+        string recordingsDirectory,
+        RecordingSegment segment,
+        IReadOnlyList<RecordingSegment> siblings)
     {
         var cameraDirectory = RecordingLayout.CameraDirectoryFor(recordingsDirectory, segment.Path);
         if (cameraDirectory is null)
         {
-            return false;
+            return default;
         }
 
         var placed = RecordingLayout.Place(cameraDirectory, segment.Path, segment.ThumbnailPath, segment.IsFinalized);
@@ -589,12 +625,19 @@ public sealed class CameraIngestHostedService(
 
         if (placed.Result is not (RecordingPlaceResult.Moved or RecordingPlaceResult.Adopted))
         {
-            return false;
+            return default;
         }
 
-        segment.Path = placed.Path;
-        segment.ThumbnailPath = placed.ThumbnailPath;
-        return true;
+        var claim = RecordingLayout.ClaimIndexedPath(segment, placed.Path, placed.ThumbnailPath, siblings);
+        if (claim.DropDuplicate)
+        {
+            logger.LogWarning(
+                "Dropped duplicate recording {Path} because {Destination} is already indexed.",
+                segment.Path,
+                placed.Path);
+        }
+
+        return claim;
     }
 
     private bool NoteCollision(string path)

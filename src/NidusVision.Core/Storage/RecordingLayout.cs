@@ -1,3 +1,5 @@
+using NidusVision.Core.Models;
+
 namespace NidusVision.Core.Storage;
 
 public enum RecordingPlaceResult
@@ -9,6 +11,8 @@ public enum RecordingPlaceResult
 }
 
 public readonly record struct RecordingPlace(RecordingPlaceResult Result, string Path, string? ThumbnailPath);
+
+public readonly record struct RecordingPathClaim(bool Changed, bool DropDuplicate);
 
 public readonly record struct CameraDirectoryChoice(string Directory, string? RenamedFrom);
 
@@ -151,6 +155,29 @@ public static class RecordingLayout
         }
     }
 
+    public static RecordingPathClaim ClaimIndexedPath(
+        RecordingSegment segment,
+        string placedPath,
+        string? placedThumbnail,
+        IEnumerable<RecordingSegment> siblings)
+    {
+        var owner = siblings.FirstOrDefault(other => other.Id != segment.Id && SamePath(other.Path, placedPath));
+        if (owner is not null)
+        {
+            owner.HasHuman |= segment.HasHuman;
+            if (string.IsNullOrEmpty(owner.ThumbnailPath) && !string.IsNullOrEmpty(placedThumbnail))
+            {
+                owner.ThumbnailPath = placedThumbnail;
+            }
+
+            return new RecordingPathClaim(Changed: true, DropDuplicate: true);
+        }
+
+        segment.Path = placedPath;
+        segment.ThumbnailPath = placedThumbnail;
+        return new RecordingPathClaim(Changed: true, DropDuplicate: false);
+    }
+
     public static void RemoveEmptyChildDirectories(string cameraDirectory, IEnumerable<string> keepPaths)
     {
         if (!Directory.Exists(cameraDirectory))
@@ -206,28 +233,26 @@ public static class RecordingLayout
 
         if (File.Exists(destination))
         {
+            if (!File.Exists(source))
+            {
+                // An earlier pass may have moved the recording without updating the database.
+                // The day-folder copy is the one to keep, and any leftover poster frame moves with it.
+                return new RecordingPlace(
+                    RecordingPlaceResult.Adopted,
+                    destination,
+                    AdoptThumbnail(sourceThumb, destinationThumb));
+            }
+
             if (new FileInfo(source).Length != new FileInfo(destination).Length)
             {
                 return new RecordingPlace(RecordingPlaceResult.Collided, source, thumbnailPath);
             }
 
             TryDelete(source);
-            if (sourceThumb is not null && !SamePath(sourceThumb, destinationThumb))
-            {
-                if (!File.Exists(destinationThumb))
-                {
-                    TryMove(sourceThumb, destinationThumb);
-                }
-                else
-                {
-                    TryDelete(sourceThumb);
-                }
-            }
-
             return new RecordingPlace(
                 RecordingPlaceResult.Adopted,
                 destination,
-                File.Exists(destinationThumb) ? destinationThumb : null);
+                AdoptThumbnail(sourceThumb, destinationThumb));
         }
 
         if (!TryMove(source, destination))
@@ -252,6 +277,23 @@ public static class RecordingLayout
             RecordingPlaceResult.Moved,
             destination,
             File.Exists(destinationThumb) ? destinationThumb : null);
+    }
+
+    private static string? AdoptThumbnail(string? sourceThumb, string destinationThumb)
+    {
+        if (sourceThumb is not null && !SamePath(sourceThumb, destinationThumb))
+        {
+            if (!File.Exists(destinationThumb))
+            {
+                TryMove(sourceThumb, destinationThumb);
+            }
+            else
+            {
+                TryDelete(sourceThumb);
+            }
+        }
+
+        return File.Exists(destinationThumb) ? destinationThumb : null;
     }
 
     private static string? ExistingThumbnail(string recordingPath, string? thumbnailPath)

@@ -1,3 +1,4 @@
+using NidusVision.Core.Models;
 using NidusVision.Core.Storage;
 
 namespace NidusVision.Tests;
@@ -62,6 +63,114 @@ public sealed class RecordingLayoutTests : IDisposable
         adopted.Result.Must().Be(RecordingPlaceResult.Adopted);
         adopted.Path.Must().Be(destination);
         File.Exists(source).Must().BeFalse();
+    }
+
+    [Fact]
+    public void PlacingAMissingSourceAdoptsTheExistingDestinationInsteadOfThrowing()
+    {
+        // Regression test for a startup crash loop: if an earlier pass moved a recording into its day
+        // folder but the database was never updated with the new path (or the source file was later
+        // removed by retention/cleanup), a later sort pass would still see the stale source path. It must
+        // not throw just because that source no longer exists on disk.
+        var cameraDirectory = _directory.GetPath("camera");
+        var day = Path.Combine(cameraDirectory, "2026-09-23");
+        Directory.CreateDirectory(day);
+        var destination = Path.Combine(day, "20260923T183000.mp4");
+        var source = Path.Combine(cameraDirectory, "20260923T183000.mp4");
+        File.WriteAllBytes(destination, [1, 2, 3, 4]);
+
+        var adopted = RecordingLayout.Place(cameraDirectory, source, null, isFinalized: true);
+
+        adopted.Result.Must().Be(RecordingPlaceResult.Adopted);
+        adopted.Path.Must().Be(destination);
+        File.Exists(destination).Must().BeTrue();
+    }
+
+    [Fact]
+    public void PlacingAMissingSourceMovesItsThumbnailIntoTheDayFolder()
+    {
+        var cameraDirectory = _directory.GetPath("camera");
+        var day = Path.Combine(cameraDirectory, "2026-09-23");
+        Directory.CreateDirectory(day);
+        var destination = Path.Combine(day, "20260923T183000.mp4");
+        var source = Path.Combine(cameraDirectory, "20260923T183000.mp4");
+        var sourceThumb = Path.Combine(cameraDirectory, "20260923T183000.jpg");
+        var destinationThumb = Path.Combine(day, "20260923T183000.jpg");
+        File.WriteAllBytes(destination, [1, 2, 3, 4]);
+        File.WriteAllBytes(sourceThumb, [9]);
+
+        var adopted = RecordingLayout.Place(cameraDirectory, source, sourceThumb, isFinalized: true);
+
+        adopted.Result.Must().Be(RecordingPlaceResult.Adopted);
+        adopted.ThumbnailPath.Must().Be(destinationThumb);
+        File.Exists(destinationThumb).Must().BeTrue();
+        File.Exists(sourceThumb).Must().BeFalse();
+    }
+
+    [Fact]
+    public void PlacingAMissingSourceDropsAThumbnailTheDayFolderAlreadyHas()
+    {
+        var cameraDirectory = _directory.GetPath("camera");
+        var day = Path.Combine(cameraDirectory, "2026-09-23");
+        Directory.CreateDirectory(day);
+        var destination = Path.Combine(day, "20260923T183000.mp4");
+        var source = Path.Combine(cameraDirectory, "20260923T183000.mp4");
+        var sourceThumb = Path.Combine(cameraDirectory, "20260923T183000.jpg");
+        var destinationThumb = Path.Combine(day, "20260923T183000.jpg");
+        File.WriteAllBytes(destination, [1, 2, 3, 4]);
+        File.WriteAllBytes(destinationThumb, [8]);
+        File.WriteAllBytes(sourceThumb, [9]);
+
+        var adopted = RecordingLayout.Place(cameraDirectory, source, sourceThumb, isFinalized: true);
+
+        adopted.ThumbnailPath.Must().Be(destinationThumb);
+        new FileInfo(destinationThumb).Length.Must().Be(1);
+        File.Exists(sourceThumb).Must().BeFalse();
+    }
+
+    [Fact]
+    public void ClaimingAPathAlreadyIndexedDropsTheDuplicateAndKeepsTheOwner()
+    {
+        var root = _directory.GetPath("claim");
+        var destination = Path.Combine(root, "2026-09-23", "20260923T183000.mp4");
+        var thumbnail = Path.Combine(root, "2026-09-23", "20260923T183000.jpg");
+        var owner = new RecordingSegment
+        {
+            Path = destination,
+            HasHuman = false,
+        };
+        var stale = new RecordingSegment
+        {
+            Path = Path.Combine(root, "20260923T183000.mp4"),
+            HasHuman = true,
+        };
+
+        var claim = RecordingLayout.ClaimIndexedPath(stale, destination, thumbnail, [owner, stale]);
+
+        claim.Changed.Must().BeTrue();
+        claim.DropDuplicate.Must().BeTrue();
+        owner.HasHuman.Must().BeTrue();
+        owner.ThumbnailPath.Must().Be(thumbnail);
+        stale.Path.Must().Be(Path.Combine(root, "20260923T183000.mp4"));
+    }
+
+    [Fact]
+    public void ClaimingAFreePathUpdatesTheSegment()
+    {
+        var root = _directory.GetPath("claim-free");
+        var destination = Path.Combine(root, "2026-09-23", "20260923T183000.mp4");
+        var thumbnail = Path.Combine(root, "2026-09-23", "20260923T183000.jpg");
+        var segment = new RecordingSegment
+        {
+            Path = Path.Combine(root, "20260923T183000.mp4"),
+        };
+
+        var claim = RecordingLayout.ClaimIndexedPath(segment, destination, thumbnail, [segment]);
+
+        claim.Changed.Must().BeTrue();
+        claim.DropDuplicate.Must().BeFalse();
+        segment.Path.Must().Be(destination);
+        segment.ThumbnailPath.Must().Be(thumbnail);
     }
 
     [Fact]
