@@ -174,7 +174,9 @@ public sealed class RecordingStorageTests : IDisposable
         recording.ByteSize.Must().Be(4);
         recording.Available.Must().BeTrue();
         recording.IsActive.Must().BeFalse();
-        (await library.ResolveRecordingPathAsync(recording.Id, CancellationToken.None)).Must().Be(path);
+        var dayFolder = Path.Combine(recordings, camera.Id.ToString("N"), "2026-09-23", "20260923T183000.mp4");
+        (await library.ResolveRecordingPathAsync(recording.Id, CancellationToken.None)).Must().Be(dayFolder);
+        File.Exists(dayFolder).Must().BeTrue();
     }
 
     [Fact]
@@ -281,6 +283,55 @@ public sealed class RecordingStorageTests : IDisposable
         await db.SaveChangesAsync();
 
         (await db.RecordingSegments.SingleAsync()).HasHuman.Must().BeTrue();
+    }
+
+    [Fact]
+    public async Task RecordingLibraryIndexesANamedCameraFolderAndRepairsAMovedPath()
+    {
+        var root = _directory.Path;
+        var recordings = Path.Combine(root, "recordings");
+        var dbOptions = new DbContextOptionsBuilder<AppDbContext>()
+            .UseSqlite($"Data Source={Path.Combine(root, "named.db")};Pooling=False")
+            .Options;
+        await using var db = new AppDbContext(dbOptions);
+        await db.Database.EnsureCreatedAsync();
+
+        var camera = new Camera { Name = "Front", MainRtspUrl = "rtsp://camera/stream" };
+        db.Cameras.Add(camera);
+        await db.SaveChangesAsync();
+
+        var directory = Path.Combine(recordings, camera.Id.ToString("N") + "-front-door");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "20260923T183000.mp4");
+        await File.WriteAllBytesAsync(path, [1, 2, 3, 4]);
+        var start = new DateTimeOffset(2026, 9, 23, 18, 30, 0, TimeSpan.Zero);
+        db.RecordingSegments.Add(new RecordingSegment
+        {
+            CameraId = camera.Id,
+            Path = Path.Combine(directory, "missing.mp4"),
+            StartUtc = start,
+            EndUtc = start.AddMinutes(15),
+            ByteSize = 1,
+            IsFinalized = true,
+        });
+        await db.SaveChangesAsync();
+
+        var library = new RecordingLibraryService(db, Options.Create(new StorageOptions
+        {
+            RecordingsDirectory = recordings,
+        }), TimeProvider.System);
+
+        await library.IndexUntrackedRecordingsAsync(CancellationToken.None);
+        var dayFile = Path.Combine(directory, "2026-09-23", "20260923T183000.mp4");
+        (await db.RecordingSegments.CountAsync()).Must().Be(1);
+        (await db.RecordingSegments.SingleAsync()).Path.Must().Be(dayFile);
+        File.Exists(path).Must().BeFalse();
+
+        await File.WriteAllBytesAsync(path, [1, 2, 3, 4]);
+        await library.IndexUntrackedRecordingsAsync(CancellationToken.None);
+
+        (await db.RecordingSegments.CountAsync()).Must().Be(1);
+        (await db.RecordingSegments.SingleAsync()).Path.Must().Be(dayFile);
     }
 
     private static void AssertArgumentValue(
