@@ -1,15 +1,16 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, viewChild } from '@angular/core';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs';
 import { CameraStore } from './camera.store';
 import { CameraApi, ProbeResult, cameraWrite } from './api/camera.api';
+import { CameraForm } from './camera-form';
 import { AddCameraDialog } from './add-camera.dialog';
 import { PageId } from './models';
 import { AppIcon, AppIconName } from './ui/app-icon';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, AppIcon],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, AppIcon, CameraForm],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
@@ -23,6 +24,7 @@ export class App {
   protected readonly probing = signal(false);
   protected readonly probeResult = signal<ProbeResult | null>(null);
   private readonly cameraApi = inject(CameraApi);
+  private readonly addForm = viewChild(CameraForm);
   protected readonly nav: ReadonlyArray<{ id: PageId; label: string; path: string; icon: AppIconName }> = [
     { id: 'monitor', label: 'Monitor Center', path: '/monitor', icon: 'layout-grid' },
     { id: 'recordings', label: 'Recordings', path: '/recordings', icon: 'archive' },
@@ -46,8 +48,12 @@ export class App {
     return this.nav.find(n => n.id === this.page()) ?? this.nav[0];
   }
 
-  protected async addCamera(name: string, url: string, location: string, enabled: boolean, username: string, password: string): Promise<void> {
-    const ok = await this.store.addCamera(name, url, location, enabled, username, password);
+  protected async addCamera(): Promise<void> {
+    const form = this.addForm()?.value();
+    if (!form) {
+      return;
+    }
+    const ok = await this.store.addCamera(cameraWrite(form));
     if (!ok) {
       this.probeResult.set({ ok: false, message: 'Could not save the camera. Check the server connection and try again.' });
       return;
@@ -57,11 +63,15 @@ export class App {
     void this.router.navigateByUrl('/cameras');
   }
 
-  protected async testConnection(url: string, location: string, enabled: boolean, username: string, password: string): Promise<void> {
+  protected async testConnection(): Promise<void> {
+    const form = this.addForm()?.value();
+    if (!form) {
+      return;
+    }
     this.probing.set(true);
     this.probeResult.set(null);
     try {
-      this.probeResult.set(await this.cameraApi.probe(cameraWrite({ name: 'Probe', url, location, enabled, username, password })));
+      this.probeResult.set(await this.cameraApi.probe(cameraWrite({ ...form, name: form.name || 'Probe' })));
     } catch {
       this.probeResult.set({ ok: false, message: 'Could not reach the server to test this camera.' });
     } finally {

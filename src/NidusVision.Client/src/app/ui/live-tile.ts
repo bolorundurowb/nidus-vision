@@ -14,7 +14,7 @@ import { StatusPill } from './status-pill';
         @if (error(); as message) {
           <p class="error">{{ message }}</p>
         }
-        <div class="top"><span class="chip">{{ camera().name }}</span><app-status-pill [status]="camera().status" /></div>
+        <div class="top"><span class="chip">{{ camera().name }}</span><app-status-pill [status]="camera().status" [enabled]="camera().enabled" [recordingEnabled]="camera().recordingEnabled" /></div>
         <div class="bot">
           <span>{{ statLabel(camera().resolution) }} · {{ fpsLabel(camera().fps) }}</span>
           <span class="live-meta">
@@ -84,6 +84,10 @@ export class LiveTile {
   private async attach(): Promise<void> {
     const el = this.video()?.nativeElement;
     if (!el) {
+      return;
+    }
+    if (!this.camera().enabled) {
+      this.error.set('This camera is disabled.');
       return;
     }
     if (typeof MediaSource === 'undefined') {

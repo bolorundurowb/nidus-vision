@@ -108,8 +108,11 @@ import { downloadVideoFrame } from '../video-frame';
         </section>
       }
 
-      <div class="grid recordings">
-        @for (recording of recordings(); track recording.id) {
+      @for (group of groups(); track $index) {
+        <section>
+          <h3 class="day-heading">{{ group.label }}</h3>
+          <div class="grid recordings">
+        @for (recording of group.items; track recording.id) {
           <article class="card recording" (click)="select(recording)">
             <div class="thumb">
               @if (recording.hasThumbnail && !thumbnailFailed().has(recording.id)) {
@@ -122,7 +125,7 @@ import { downloadVideoFrame } from '../video-frame';
               <div class="title-row">
                 <div>
                   <h3>{{ recording.cameraName }}</h3>
-                  <p class="muted">{{ recording.location }} · {{ when(recording.startUtc) }}{{ quality(recording.resolution) }}</p>
+                  <p class="muted">{{ recording.location }} · {{ timeLabel(recording.startUtc) }}{{ quality(recording.resolution) }}</p>
                 </div>
                 <span class="size">{{ recording.byteSize / 1048576 | number:'1.1-1' }} MB</span>
               </div>
@@ -135,7 +138,9 @@ import { downloadVideoFrame } from '../video-frame';
             </div>
           </article>
         }
-      </div>
+          </div>
+        </section>
+      }
       @if (!loading() && recordings().length === 0) { <p class="muted status">No recordings found.</p> }
       @if (total() > 0) {
         <nav class="pagination" aria-label="Recording pages">
@@ -153,6 +158,7 @@ import { downloadVideoFrame } from '../video-frame';
     .filters { display: flex; flex-wrap: wrap; align-items: end; gap: .65rem; padding: .75rem; }
     .filters label { display: grid; gap: .25rem; color: var(--muted-foreground); font-size: .68rem; font-weight: 600; text-transform: uppercase; }
     .filters select, .filters input { min-height: 2.25rem; border: 1px solid var(--border); border-radius: .45rem; padding: .35rem .65rem; background: var(--card); color: var(--foreground); font: inherit; text-transform: none; }
+    h3.day-heading { margin: 0.25rem 0 0; font-size: 1rem; font-weight: 600; }
     .recordings { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     @media (max-width: 80rem) { .recordings { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
     @media (max-width: 64rem) { .recordings { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -298,9 +304,37 @@ export class RecordingsPage {
     return hours ? `${hours}:${pad(Math.floor((safe % 3600) / 60))}:${pad(safe % 60)}` : `${Math.floor(safe / 60)}:${pad(safe % 60)}`;
   }
   protected durationLabel(start: string, end: string) { return this.clock(Math.round((new Date(end).getTime() - new Date(start).getTime()) / 1000)); }
-  protected when(value: string) {
+  protected groups(): { label: string; items: RecordingDto[] }[] {
+    const groups: { label: string; items: RecordingDto[] }[] = [];
+    for (const recording of this.recordings()) {
+      const label = this.dayLabel(recording.startUtc);
+      const last = groups.at(-1);
+      if (!last || last.label !== label) {
+        groups.push({ label, items: [recording] });
+      } else {
+        last.items.push(recording);
+      }
+    }
+    return groups;
+  }
+
+  protected timeLabel(value: string): string {
+    return new Date(value).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  }
+
+  private dayLabel(value: string): string {
     const date = new Date(value);
-    return `${date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} at ${date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
+    const start = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+    const today = new Date();
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+    const diff = Math.round((todayStart - start) / 86_400_000);
+    if (diff === 0) {
+      return 'Today';
+    }
+    if (diff === 1) {
+      return 'Yesterday';
+    }
+    return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
   }
   protected quality(resolution: string | null) {
     const height = resolution?.split(/[×x]/)[1]?.trim();

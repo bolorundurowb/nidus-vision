@@ -11,6 +11,8 @@ export interface CameraItem {
   retention: string | null;
   location: string;
   enabled: boolean;
+  recordingEnabled: boolean;
+  transport: string;
   mainRtspUrl: string;
   hasCredentials?: boolean;
 }
