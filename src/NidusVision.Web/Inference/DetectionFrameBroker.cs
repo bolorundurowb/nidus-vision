@@ -16,6 +16,14 @@ public sealed class DetectionFrameBroker
     private readonly Dictionary<Guid, DetectionFrame> _latest = [];
     private readonly Lock _gate = new();
 
+    public void Drop(Guid cameraId)
+    {
+        lock (_gate)
+        {
+            _latest.Remove(cameraId);
+        }
+    }
+
     public void Publish(DetectionFrame frame)
     {
         lock (_gate)

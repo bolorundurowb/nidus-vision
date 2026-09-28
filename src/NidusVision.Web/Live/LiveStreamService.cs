@@ -13,6 +13,11 @@ public sealed class LiveStreamService(AppDbContext db, CameraService cameras, IL
     {
         var camera = await db.Cameras.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cameraId, cancellationToken)
             ?? throw new FileNotFoundException("Camera not found.");
+        if (!camera.Enabled)
+        {
+            throw new InvalidOperationException("This camera is disabled.");
+        }
+
         var url = cameras.ResolveRtspUrl(camera);
 
         var transport = camera.Transport.ToString().ToLowerInvariant();

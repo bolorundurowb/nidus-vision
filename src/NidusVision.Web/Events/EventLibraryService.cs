@@ -152,10 +152,9 @@ public sealed class RecordingLibraryService(AppDbContext db, IOptions<StorageOpt
         var cameras = await db.Cameras.AsNoTracking()
             .Select(camera => camera.Id)
             .ToHashSetAsync(cancellationToken);
-        var indexedPaths = (await db.RecordingSegments.AsNoTracking()
-                .Select(segment => segment.Path)
-                .ToListAsync(cancellationToken))
-            .Select(Path.GetFullPath)
+        var segments = await db.RecordingSegments.ToListAsync(cancellationToken);
+        var indexedPaths = segments
+            .Select(segment => Path.GetFullPath(segment.Path))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         foreach (var path in Directory.EnumerateFiles(root, "*.mp4", SearchOption.AllDirectories))
@@ -168,8 +167,21 @@ public sealed class RecordingLibraryService(AppDbContext db, IOptions<StorageOpt
                 continue;
             }
 
+            var match = segments.FirstOrDefault(segment => segment.CameraId == cameraId && segment.StartUtc == start);
+            if (match is not null)
+            {
+                if (!File.Exists(match.Path))
+                {
+                    match.Path = fullPath;
+                    PlaceFinalized(root, match);
+                    indexedPaths.Add(Path.GetFullPath(match.Path));
+                }
+
+                continue;
+            }
+
             var info = new FileInfo(fullPath);
-            db.RecordingSegments.Add(new RecordingSegment
+            var segment = new RecordingSegment
             {
                 CameraId = cameraId,
                 Path = fullPath,
@@ -178,8 +190,19 @@ public sealed class RecordingLibraryService(AppDbContext db, IOptions<StorageOpt
                 Codec = "copy",
                 ByteSize = info.Length,
                 IsFinalized = true,
-            });
-            indexedPaths.Add(fullPath);
+            };
+            PlaceFinalized(root, segment);
+            db.RecordingSegments.Add(segment);
+            segments.Add(segment);
+            indexedPaths.Add(Path.GetFullPath(segment.Path));
+        }
+
+        foreach (var directory in Directory.EnumerateDirectories(root))
+        {
+            if (RecordingPath.TryParseCameraId(Path.GetFileName(directory), out var cameraId) && cameras.Contains(cameraId))
+            {
+                RecordingLayout.RemoveEmptyChildDirectories(directory, []);
+            }
         }
 
         if (db.ChangeTracker.HasChanges())
@@ -200,13 +223,30 @@ public sealed class RecordingLibraryService(AppDbContext db, IOptions<StorageOpt
         var relative = Path.GetRelativePath(root, path);
         var parts = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         if (parts.Length < 2 ||
-            !Guid.TryParseExact(parts[0], "N", out cameraId) ||
+            !RecordingPath.TryParseCameraId(parts[0], out cameraId) ||
             !cameras.Contains(cameraId))
         {
             return false;
         }
 
         return RecordingPath.TryParseStart(path, out start);
+    }
+
+    private static void PlaceFinalized(string recordingsRoot, RecordingSegment segment)
+    {
+        var cameraDirectory = RecordingLayout.CameraDirectoryFor(recordingsRoot, segment.Path);
+        if (cameraDirectory is null)
+        {
+            return;
+        }
+
+        var placed = RecordingLayout.Place(cameraDirectory, segment.Path, segment.ThumbnailPath, segment.IsFinalized);
+        if (placed.Result is RecordingPlaceResult.Moved or RecordingPlaceResult.Adopted)
+        {
+            segment.Path = placed.Path;
+            segment.ThumbnailPath = placed.ThumbnailPath;
+            segment.ByteSize = DiskFileSize.Of(placed.Path, segment.ByteSize);
+        }
     }
 
     private static (int Page, int PageSize) NormalizePage(int page, int pageSize) =>
