@@ -1,5 +1,6 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, viewChild } from '@angular/core';
 import { CameraApi, ProbeResult, cameraWrite } from '../api/camera.api';
+import { CameraForm, CameraFormValue } from '../camera-form';
 import { CameraStore } from '../camera.store';
 import { StatusPill } from '../ui/status-pill';
 import { AddCameraDialog } from '../add-camera.dialog';
@@ -8,7 +9,7 @@ import { AppIcon } from '../ui/app-icon';
 
 @Component({
   selector: 'app-cameras-page',
-  imports: [StatusPill, AppIcon],
+  imports: [StatusPill, AppIcon, CameraForm],
   template: `
     <div class="page">
       <div class="toolbar">
@@ -31,13 +32,10 @@ import { AppIcon } from '../ui/app-icon';
           <article class="card cam">
             <div class="cam-top">
               <span class="cam-icon"><app-icon name="camera" /></span>
-              <button type="button" class="icon-btn" (click)="configure(camera.id)" aria-label="Configure {{ camera.name }}">
-                <app-icon name="ellipsis-vertical" />
-              </button>
             </div>
             <h3>{{ camera.name }}</h3>
             <p class="muted">{{ camera.location }} · RTSP</p>
-            <app-status-pill [status]="camera.status" />
+            <app-status-pill [status]="camera.status" [enabled]="camera.enabled" [recordingEnabled]="camera.recordingEnabled" />
             <dl>
               <div><dt>Resolution</dt><dd>{{ statLabel(camera.resolution) }}</dd></div>
               <div><dt>Bitrate</dt><dd>{{ statLabel(camera.bitrate) }}</dd></div>
@@ -52,7 +50,6 @@ import { AppIcon } from '../ui/app-icon';
       </div>
       <section class="card diag">
         <h3>Stream diagnostics</h3>
-        <p class="muted">Last connectivity check: just now</p>
         <div class="table-wrap">
           <table>
             <thead><tr><th>Camera</th><th>Stream URL</th><th>Resolution</th><th>Status</th></tr></thead>
@@ -62,7 +59,7 @@ import { AppIcon } from '../ui/app-icon';
                   <td>{{ c.name }}</td>
                   <td class="url mono">{{ c.mainRtspUrl }}</td>
                   <td>{{ statLabel(c.resolution) }}</td>
-                  <td><app-status-pill [status]="c.status" /></td>
+                  <td><app-status-pill [status]="c.status" [enabled]="c.enabled" [recordingEnabled]="c.recordingEnabled" /></td>
                 </tr>
               }
             </tbody>
@@ -71,65 +68,55 @@ import { AppIcon } from '../ui/app-icon';
       </section>
       @if (editing(); as cam) {
         <div class="modal-scrim" (click)="close()">
-          <div class="modal card" (click)="$event.stopPropagation()">
-            <div class="modal-head">
-              <div>
-                <h2>Configure {{ cam.name }}</h2>
-                <p class="muted">Stream details, location, and credentials.</p>
-              </div>
+          <div class="modal card camera-dialog" (click)="$event.stopPropagation()">
+            <div class="camera-dialog-close">
               <button type="button" class="icon-btn" (click)="close()" aria-label="Close dialog">
                 <app-icon name="x" />
               </button>
             </div>
-            <label>Name<input class="input" [value]="cam.name" (input)="cam.name = $any($event.target).value"></label>
-            <label>RTSP URL<input class="input mono" [value]="cam.mainRtspUrl" (input)="cam.mainRtspUrl = $any($event.target).value"></label>
-            <div class="field-pair">
-              <label>Location
-                <select class="input" [value]="cam.location" (change)="cam.location = $any($event.target).value">
-                  <option value="Interior">Interior</option>
-                  <option value="Exterior">Exterior</option>
-                </select>
-              </label>
-              <label class="enabled-field">
-                <span>Camera enabled</span>
-                <input type="checkbox" [checked]="cam.enabled" (change)="cam.enabled = $any($event.target).checked">
-              </label>
+            <div class="camera-dialog-title">
+              <h2>Configure {{ cam.name }}</h2>
+              <p class="muted">Stream details, location, and credentials.</p>
             </div>
-            <div class="field-pair">
-              <label>
-                Username
-                <input class="input" autocomplete="off" [value]="username()" (input)="username.set($any($event.target).value)">
-              </label>
-              <label>
-                Password
-                <input class="input" type="password" autocomplete="new-password" [value]="password()" (input)="password.set($any($event.target).value)">
-              </label>
-            </div>
-            @if (cam.hasCredentials && !removeCredentials()) {
-              <button type="button" class="btn outline sm" (click)="clearStoredCredentials()">
-                Remove stored credentials
-              </button>
+            @if (confirmingDelete()) {
+              <div class="delete-confirm">
+                <strong>Delete this camera?</strong>
+                <p>This removes {{ cam.name }} and its stored footage. A file still held open by capture is removed once that process exits.</p>
+                @if (probeResult(); as result) {
+                  <p class="hint error">{{ result.message }}</p>
+                }
+                <div class="actions">
+                  <button type="button" class="btn outline" (click)="confirmingDelete.set(false)">Cancel</button>
+                  <button type="button" class="btn danger-fill" (click)="remove(cam)">Delete camera</button>
+                </div>
+              </div>
+            } @else if (draft(); as initial) {
+              <app-camera-form [initial]="initial">
+                @if (probeResult(); as result) {
+                  <p class="hint" [class.ok]="result.ok" [class.error]="!result.ok">{{ result.message }}</p>
+                } @else {
+                  <div class="cred-note">
+                    <span>{{ removeCredentials() ? 'Stored username and password will be removed on save.' : (cam.hasCredentials ? 'Credentials are stored. Leave blank to keep them.' : 'This camera has no stored credentials yet.') }}</span>
+                    @if (cam.hasCredentials && !removeCredentials()) {
+                      <button type="button" class="text-link" (click)="clearStoredCredentials()">Remove</button>
+                    }
+                  </div>
+                }
+              </app-camera-form>
+              <div class="camera-dialog-footer">
+                <button type="button" class="trash-btn" (click)="confirmingDelete.set(true)" aria-label="Delete camera" title="Delete camera">
+                  <app-icon name="trash-2" />
+                </button>
+                <div class="actions">
+                  <button type="button" class="btn outline" [disabled]="probing()" (click)="testConnection(cam)">
+                    <app-icon name="plug" />{{ probing() ? 'Testing…' : 'Test connection' }}
+                  </button>
+                  <button type="button" class="btn" (click)="save(cam)">
+                    <app-icon name="save" />Save
+                  </button>
+                </div>
+              </div>
             }
-            @if (probeResult(); as result) {
-              <p class="hint" [class.ok]="result.ok" [class.error]="!result.ok">{{ result.message }}</p>
-            } @else if (removeCredentials()) {
-              <p class="hint">Stored username and password will be removed on save.</p>
-            } @else {
-              <p class="hint">
-                {{ cam.hasCredentials ? 'Credentials are stored. Leave blank to keep them.' : 'This camera has no stored credentials yet.' }}
-              </p>
-            }
-            <div class="modal-actions">
-              <button type="button" class="btn outline" (click)="close()">
-                <app-icon name="x" />Cancel
-              </button>
-              <button type="button" class="btn outline" [disabled]="probing()" (click)="testConnection(cam)">
-                <app-icon name="plug" />{{ probing() ? 'Testing…' : 'Test connection' }}
-              </button>
-              <button type="button" class="btn" (click)="save(cam)">
-                <app-icon name="save" />Save
-              </button>
-            </div>
           </div>
         </div>
       }
@@ -154,8 +141,6 @@ import { AppIcon } from '../ui/app-icon';
     th { color: var(--muted-foreground); font-size: 0.75rem; font-weight: 500; padding: 0.75rem 0.5rem; }
     td { padding: 0.75rem 0.5rem; border-top: 1px solid var(--border); }
     td.url { color: var(--muted-foreground); }
-    .enabled-field { display: flex; align-items: center; justify-content: space-between; }
-    .enabled-field input { width: 1rem; height: 1rem; accent-color: var(--primary); }
     .icon-btn { border: 0; background: transparent; color: inherit; padding: 0.25rem 0.4rem; border-radius: 0.35rem; display: inline-grid; place-items: center; }
   `,
 })
@@ -163,9 +148,10 @@ export class CamerasPage {
   protected readonly store = inject(CameraStore);
   private readonly addDialog = inject(AddCameraDialog);
   private readonly api = inject(CameraApi);
+  private readonly form = viewChild(CameraForm);
   protected readonly editing = signal<CameraItem | null>(null);
-  protected readonly username = signal('');
-  protected readonly password = signal('');
+  protected readonly draft = signal<CameraFormValue | null>(null);
+  protected readonly confirmingDelete = signal(false);
   protected readonly probing = signal(false);
   protected readonly probeResult = signal<ProbeResult | null>(null);
   protected readonly removeCredentials = signal(false);
@@ -178,29 +164,43 @@ export class CamerasPage {
 
   protected configure(id: string): void {
     const camera = this.store.cameras().find(c => c.id === id);
-    this.username.set('');
-    this.password.set('');
     this.probeResult.set(null);
     this.removeCredentials.set(false);
+    this.confirmingDelete.set(false);
+    this.draft.set(camera ? {
+      name: camera.name,
+      url: camera.mainRtspUrl,
+      location: camera.location,
+      enabled: camera.enabled,
+      recordingEnabled: camera.recordingEnabled,
+      transport: camera.transport,
+      username: '',
+      password: '',
+    } : null);
     this.editing.set(camera ? { ...camera } : null);
   }
 
   protected clearStoredCredentials(): void {
-    this.username.set('');
-    this.password.set('');
+    this.form()?.clearCredentials();
     this.removeCredentials.set(true);
   }
 
   protected close(): void {
     this.editing.set(null);
+    this.draft.set(null);
     this.probeResult.set(null);
+    this.confirmingDelete.set(false);
   }
 
   protected async testConnection(camera: CameraItem): Promise<void> {
+    const form = this.form()?.value();
+    if (!form) {
+      return;
+    }
     this.probing.set(true);
     this.probeResult.set(null);
     try {
-      const result = await this.api.probe(this.writeBody(camera));
+      const result = await this.api.probe(this.writeBody(form));
       this.probeResult.set(result);
       if (result.ok) {
         this.applyStreamInfo(camera.id, result);
@@ -213,13 +213,28 @@ export class CamerasPage {
   }
 
   protected async save(camera: CameraItem): Promise<void> {
-    try {
-      const saved = await this.api.update(camera.id, this.writeBody(camera));
-      this.store.cameras.update(list => list.map(c => (c.id === camera.id ? this.api.toItem(saved) : c)));
-    } catch {
-      this.store.cameras.update(list => list.map(c => (c.id === camera.id ? camera : c)));
+    const form = this.form()?.value();
+    if (!form) {
+      return;
     }
-    this.close();
+    try {
+      const saved = await this.api.update(camera.id, this.writeBody(form));
+      this.store.cameras.update(list => list.map(c => (c.id === camera.id ? this.api.toItem(saved) : c)));
+      this.close();
+    } catch {
+      this.probeResult.set({ ok: false, message: 'Could not save this camera. Check the server connection and try again.' });
+    }
+  }
+
+  protected async remove(camera: CameraItem): Promise<void> {
+    try {
+      await this.api.delete(camera.id);
+      this.store.cameras.update(list => list.filter(item => item.id !== camera.id));
+      this.close();
+    } catch {
+      this.confirmingDelete.set(false);
+      this.probeResult.set({ ok: false, message: 'Could not delete this camera.' });
+    }
   }
 
   /** A probe reports the live stream details before ingest has had a chance to persist them. */
@@ -232,14 +247,16 @@ export class CamerasPage {
       : c)));
   }
 
-  private writeBody(camera: CameraItem) {
+  private writeBody(form: CameraFormValue) {
     return cameraWrite({
-      name: camera.name,
-      url: camera.mainRtspUrl,
-      location: camera.location,
-      enabled: camera.enabled,
-      username: this.username(),
-      password: this.password(),
+      name: form.name,
+      url: form.url,
+      location: form.location,
+      enabled: form.enabled,
+      recordingEnabled: form.recordingEnabled,
+      transport: form.transport,
+      username: form.username,
+      password: form.password,
       clearCredentials: this.removeCredentials(),
     });
   }

@@ -138,6 +138,7 @@ public sealed class CameraService(
             ? CameraLocation.Exterior
             : CameraLocation.Interior;
         camera.Enabled = request.Enabled;
+        camera.RecordingEnabled = request.RecordingEnabled ?? true;
         camera.MainRtspUrl = main.UrlWithoutCredentials;
         camera.SubRtspUrl = sub;
 
@@ -238,25 +239,34 @@ public sealed class CameraService(
             camera.LastResolution,
             camera.LastFps,
             stats.Bitrate,
-            stats.Retention);
+            stats.Retention,
+            camera.RecordingEnabled);
     }
 
     private void DeleteRecordingsDirectory(Guid cameraId)
     {
         var root = Path.GetFullPath(storage.Value.RecordingsDirectory);
-        var directory = Path.Combine(root, cameraId.ToString("N"));
-        if (!StorageRoot.Contains(root, directory) || !Directory.Exists(directory))
+        if (!Directory.Exists(root))
         {
             return;
         }
 
-        try
+        foreach (var directory in Directory.EnumerateDirectories(root))
         {
-            Directory.Delete(directory, recursive: true);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            logger.LogWarning(ex, "Could not delete recordings for removed camera {CameraId} at {Directory}.", cameraId, directory);
+            if (!RecordingPath.BelongsToCamera(Path.GetFileName(directory), cameraId)
+                || !StorageRoot.Contains(root, directory))
+            {
+                continue;
+            }
+
+            try
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                logger.LogWarning(ex, "Could not delete recordings for removed camera {CameraId} at {Directory}.", cameraId, directory);
+            }
         }
     }
 

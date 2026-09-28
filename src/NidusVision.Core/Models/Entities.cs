@@ -25,6 +25,7 @@ public sealed class Camera
     public required string Name { get; set; }
     public CameraLocation Location { get; set; } = CameraLocation.Interior;
     public bool Enabled { get; set; } = true;
+    public bool RecordingEnabled { get; set; } = true;
     public required string MainRtspUrl { get; set; }
     public string? SubRtspUrl { get; set; }
     public string? Username { get; set; }

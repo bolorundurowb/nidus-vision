@@ -19,6 +19,12 @@ public sealed class IngestSupportTests
         camera.MainRtspUrl = "rtsp://cam/a";
         camera.PasswordProtected = "other";
         CameraIngestFingerprint.From(camera).Must().NotBe(original);
+        camera.PasswordProtected = "p";
+        camera.Name = "Back gate";
+        CameraIngestFingerprint.From(camera).Must().NotBe(original);
+        camera.Name = "Front";
+        camera.RecordingEnabled = false;
+        CameraIngestFingerprint.From(camera).Must().NotBe(original);
     }
 
     [Fact]
@@ -58,5 +64,24 @@ public sealed class IngestSupportTests
 
         // Assert
         parsed.Must().BeFalse();
+    }
+
+    [Fact]
+    public void RecordingPathBuildsAReadableCameraFolderName()
+    {
+        var id = Guid.Parse("0123456789abcdef0123456789abcdef");
+
+        RecordingPath.Slug("Front Door").Must().Be("front-door");
+        RecordingPath.Slug("  Café / Cam!! ").Must().Be("café-cam");
+        RecordingPath.Slug("!!!").Must().Be("");
+        RecordingPath.Slug(new string('A', 80)).Length.Must().Be(RecordingPath.MaxSlugLength);
+        RecordingPath.CameraDirectoryName(id, "Front Door").Must().Be(id.ToString("N") + "-front-door");
+        RecordingPath.CameraDirectoryName(id, "!!!").Must().Be(id.ToString("N"));
+        RecordingPath.TryParseCameraId(id.ToString("N"), out var bare).Must().BeTrue();
+        bare.Must().Be(id);
+        RecordingPath.TryParseCameraId(id.ToString("N") + "-front-door", out var named).Must().BeTrue();
+        named.Must().Be(id);
+        RecordingPath.TryParseCameraId(id.ToString("N") + "front", out _).Must().BeFalse();
+        RecordingPath.TryParseCameraId("not-a-camera", out _).Must().BeFalse();
     }
 }

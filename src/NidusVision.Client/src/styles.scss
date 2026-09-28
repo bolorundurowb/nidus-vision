@@ -55,10 +55,12 @@ a { color: inherit; text-decoration: none; }
 .pill.recording { color: #dc2626; background: rgb(239 68 68 / 0.1); border-color: rgb(239 68 68 / 0.2); }
 .pill.online { color: #059669; background: rgb(16 185 129 / 0.1); border-color: rgb(16 185 129 / 0.2); }
 .pill.offline { color: #64748b; background: rgb(100 116 139 / 0.1); border-color: rgb(100 116 139 / 0.2); }
+.pill.live { color: #0369a1; background: rgb(14 165 233 / 0.12); border-color: rgb(14 165 233 / 0.28); }
 .dot { width: 6px; height: 6px; border-radius: 999px; }
 .dot.recording { background: var(--red); animation: pulse 1.4s ease-in-out infinite; }
 .dot.online { background: var(--emerald); }
 .dot.offline { background: #94a3b8; }
+.dot.live { background: #0284c7; }
 @keyframes pulse { 50% { opacity: 0.4; } }
 .page { padding: 1.5rem 2rem; display: flex; flex-direction: column; gap: 1.25rem; }
 .eyebrow { font-size: 0.75rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--primary); margin: 0; }
@@ -80,7 +82,99 @@ h2.page-title { margin: 0.25rem 0 0; font-size: 1.5rem; font-weight: 600; letter
 .modal label { display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.75rem; font-weight: 500; }
 .modal .field-pair { display: grid; gap: 0.85rem; grid-template-columns: 1fr 1fr; }
 @media (max-width: 30rem) { .modal .field-pair { grid-template-columns: 1fr; } }
-.modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; padding-top: 0.25rem; }
+.modal-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 0.5rem; padding-top: 0.25rem; }
+.modal-actions .push { margin-right: auto; }
+.option-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.option-row p { margin: 0.15rem 0 0; font-weight: 400; }
+.btn.danger { color: #b91c1c; border-color: rgb(239 68 68 / 0.45); }
+.btn.danger-fill { background: #c0392b; color: #fff; border-color: transparent; }
+.btn.danger-fill:hover { background: #a5301f; }
 .hint { margin: 0; font-size: 0.75rem; color: var(--muted-foreground); background: var(--muted); padding: 0.75rem; border-radius: 0.5rem; }
 .hint.error { color: #b91c1c; background: rgb(239 68 68 / 0.1); }
 .hint.ok { color: #047857; background: rgb(16 185 129 / 0.12); }
+
+.modal.camera-dialog {
+  width: min(30rem, 100%);
+  max-height: min(92vh, 52rem);
+  padding: 0;
+  gap: 0;
+  border-radius: 14px;
+  box-shadow: 0 20px 40px -12px rgb(20 22 26 / 0.18);
+}
+.camera-dialog-close { display: flex; justify-content: flex-end; padding: 16px 16px 0; }
+.camera-dialog-close .icon-btn { width: 30px; height: 30px; border-radius: 8px; color: #6b7280; }
+.camera-dialog-close .icon-btn:hover { background: var(--muted); }
+.camera-dialog-title { padding: 0 22px 18px; }
+.camera-dialog-title h2 { font-size: 18px; letter-spacing: -0.2px; }
+.camera-dialog-title p { margin: 4px 0 0; font-size: 13px; }
+.camera-dialog .form-section { padding: 18px 22px; }
+.camera-dialog .section-label {
+  margin: 0 0 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; color: #9aa1ac;
+}
+.camera-dialog .stack { display: flex; flex-direction: column; gap: 16px; }
+.camera-dialog .rule { height: 1px; background: #eef0f2; margin: 0 22px; }
+.camera-dialog label { gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--foreground); }
+.camera-dialog .input { height: 36px; padding: 0 12px; border-radius: 8px; font-size: 13.5px; }
+.camera-dialog .mono { font-size: 12.5px; }
+.camera-dialog .field-pair { gap: 14px; }
+.camera-dialog .select-wrap { position: relative; display: block; }
+.camera-dialog .select-wrap select { appearance: none; padding-right: 30px; cursor: pointer; }
+.camera-dialog .select-wrap::after {
+  content: ""; position: absolute; right: 12px; top: 50%; width: 7px; height: 7px;
+  border-right: 1.6px solid #8a9099; border-bottom: 1.6px solid #8a9099;
+  transform: translateY(-70%) rotate(45deg); pointer-events: none;
+}
+.camera-dialog .option-title { font-size: 13.5px; font-weight: 600; }
+.camera-dialog .option-row p { margin: 2px 0 0; font-size: 12.5px; color: var(--muted-foreground); }
+.camera-dialog .switch {
+  width: 42px; height: 24px; border: 0; border-radius: 12px; padding: 0; position: relative; flex: none;
+  background: var(--card); box-shadow: inset 0 0 0 1.5px #c7cbd1;
+}
+.camera-dialog .switch span {
+  width: 18px; height: 18px; border-radius: 50%; position: absolute; top: 3px; left: 3px;
+  background: #6b7280; transition: left 0.15s ease, background 0.15s ease;
+}
+.camera-dialog .switch.on { background: #6b7280; box-shadow: none; }
+.camera-dialog .switch.on span { left: 21px; background: #fff; }
+.camera-dialog .cred-note {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin: 12px 0 0; padding: 10px 12px; background: #f6f7f8; border-radius: 8px;
+  font-size: 12.5px; font-weight: 400; color: #7a828c;
+}
+.camera-dialog .text-link {
+  border: 0; background: none; padding: 0; color: #6b7280; font-size: 12.5px; font-weight: 600;
+  text-decoration: underline; text-decoration-color: #c7cbd1; white-space: nowrap; flex: none;
+}
+.camera-dialog .text-link:hover { color: var(--foreground); }
+.camera-dialog .hint { margin-top: 12px; }
+.camera-dialog-footer {
+  border-top: 1px solid #eef0f2; padding: 16px 22px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.camera-dialog-footer.end { justify-content: flex-end; }
+.camera-dialog-footer .actions { display: flex; gap: 8px; }
+.camera-dialog-footer .btn { height: 36px; border-radius: 8px; font-size: 13px; }
+.camera-dialog .trash-btn {
+  width: 36px; height: 36px; border-radius: 8px; border: 1px solid #dadde1; background: var(--card);
+  color: #9aa1ac; display: grid; place-items: center; padding: 0;
+}
+.camera-dialog .trash-btn:hover { background: #fbeae7; color: #c0392b; border-color: #f3d6cf; }
+.camera-dialog .trash-btn app-icon { width: 15px; height: 15px; }
+.delete-confirm {
+  margin: 0 22px 22px; padding: 16px; border-radius: 10px;
+  background: #fdf3f1; border: 1px solid #f3d6cf;
+}
+.delete-confirm strong { display: block; font-size: 14px; margin-bottom: 4px; }
+.delete-confirm p { margin: 0 0 14px; font-size: 13px; color: #8a9099; }
+.delete-confirm .actions { display: flex; gap: 8px; justify-content: flex-end; }
+.delete-confirm .btn { height: 34px; border-radius: 8px; font-size: 13px; }
+
+@media (prefers-color-scheme: dark) {
+  .camera-dialog .rule, .camera-dialog-footer { border-color: var(--border); background: transparent; }
+  .camera-dialog .rule { background: var(--border); }
+  .camera-dialog .cred-note { background: var(--muted); color: var(--muted-foreground); }
+  .delete-confirm { background: rgb(192 57 43 / 0.12); border-color: rgb(192 57 43 / 0.35); }
+  .delete-confirm p { color: var(--muted-foreground); }
+  .camera-dialog .trash-btn:hover { background: rgb(192 57 43 / 0.16); }
+}

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -136,6 +137,42 @@ public sealed class CameraCredentialsTests : SqliteTestBase
         deleted.Must().BeTrue();
         Directory.Exists(cameraDirectory).Must().BeFalse();
         Directory.Exists(otherDirectory).Must().BeTrue();
+    }
+
+    [Fact]
+    public async Task DeleteAsyncRemovesANamedCameraRecordingsDirectory()
+    {
+        using var directory = new TestDirectory();
+        var recordings = directory.GetPath("recordings");
+        await using var db = CreateContext();
+        var service = CreateService(db, recordings);
+        var created = await service.CreateAsync(Write("Front Door", null, null), CancellationToken.None);
+        var cameraDirectory = Path.Combine(recordings, created.Id.ToString("N") + "-front-door");
+        Directory.CreateDirectory(cameraDirectory);
+        await File.WriteAllBytesAsync(Path.Combine(cameraDirectory, "20260923T183000.mp4"), [1]);
+
+        var deleted = await service.DeleteAsync(created.Id, CancellationToken.None);
+
+        deleted.Must().BeTrue();
+        Directory.Exists(cameraDirectory).Must().BeFalse();
+    }
+
+    [Fact]
+    public async Task OmittedRecordingEnabledStaysOn()
+    {
+        var json = """{"name":"Front","enabled":true,"mainRtspUrl":"rtsp://192.168.1.20/stream","transport":"tcp"}""";
+        var request = JsonSerializer.Deserialize<CameraWriteRequest>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        request!.RecordingEnabled.VerifyNullable().BeNull();
+
+        await using var db = CreateContext();
+        var service = CreateService(db);
+        var created = await service.CreateAsync(request, CancellationToken.None);
+        created.RecordingEnabled.Must().BeTrue();
+
+        var disabled = await service.UpdateAsync(created.Id, request with { RecordingEnabled = false }, CancellationToken.None);
+        disabled!.RecordingEnabled.Must().BeFalse();
+        var omitted = await service.UpdateAsync(created.Id, request, CancellationToken.None);
+        omitted!.RecordingEnabled.Must().BeTrue();
     }
 
     private CameraService CreateService(AppDbContext db, string? recordingsDirectory = null) =>

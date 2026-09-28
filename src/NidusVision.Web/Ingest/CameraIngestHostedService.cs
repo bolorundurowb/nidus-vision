@@ -31,23 +31,26 @@ public sealed class CameraIngestHostedService(
     ILogger<CameraIngestHostedService> logger) : BackgroundService
 {
     private readonly ConcurrentDictionary<Guid, CameraRun> _runners = new();
+    private readonly Lock _collisionGate = new();
+    private readonly HashSet<string> _collisions = new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try
         {
+            await SortExistingFootageAsync(stoppingToken);
             while (!stoppingToken.IsCancellationRequested)
             {
                 await using var scope = scopes.CreateAsyncScope();
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-                var cameras = await db.Cameras.AsNoTracking().Where(c => c.Enabled).ToListAsync(stoppingToken);
+                var cameras = await db.Cameras.AsNoTracking().ToListAsync(stoppingToken);
                 var settings = await db.AppSettings.AsNoTracking().OrderBy(s => s.Id).FirstAsync(stoppingToken);
                 var emitFrames = settings.InferenceEnabled && detector.IsAvailable;
-                var enabled = cameras.ToDictionary(c => c.Id);
+                var recording = cameras.Where(camera => camera.Enabled && camera.RecordingEnabled).ToDictionary(camera => camera.Id);
 
                 foreach (var id in _runners.Keys)
                 {
-                    if (!enabled.ContainsKey(id))
+                    if (!recording.ContainsKey(id))
                     {
                         CancelRun(id);
                     }
@@ -55,6 +58,7 @@ public sealed class CameraIngestHostedService(
 
                 foreach (var camera in cameras)
                 {
+                    var shouldRecord = recording.ContainsKey(camera.Id);
                     var fingerprint = CameraIngestFingerprint.From(camera, emitFrames, settings.SampleFps);
                     if (_runners.TryGetValue(camera.Id, out var existing))
                     {
@@ -62,7 +66,7 @@ public sealed class CameraIngestHostedService(
                         {
                             RemoveRun(camera.Id);
                         }
-                        else if (!string.Equals(existing.Fingerprint, fingerprint, StringComparison.Ordinal))
+                        else if (!shouldRecord || !string.Equals(existing.Fingerprint, fingerprint, StringComparison.Ordinal))
                         {
                             existing.Cts.Cancel();
                             continue;
@@ -73,9 +77,24 @@ public sealed class CameraIngestHostedService(
                         }
                     }
 
+                    if (!shouldRecord)
+                    {
+                        var recordingsRoot = scope.ServiceProvider.GetRequiredService<IOptions<StorageOptions>>().Value.RecordingsDirectory;
+                        try
+                        {
+                            await AlignCameraFolderAsync(db, camera, recordingsRoot, stoppingToken);
+                        }
+                        catch (Exception ex) when (ex is not OperationCanceledException)
+                        {
+                            logger.LogWarning(ex, "Could not arrange recordings for camera {CameraId}.", camera.Id);
+                        }
+
+                        continue;
+                    }
+
                     var cts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
                     var run = new CameraRun(fingerprint, cts);
-                    run.Task = RunCameraAsync(camera.Id, emitFrames, settings.SampleFps, cts.Token);
+                    run.Task = RunCameraAsync(camera.Id, emitFrames, settings.SampleFps, cts.Token, stoppingToken);
                     _runners[camera.Id] = run;
                 }
 
@@ -136,7 +155,12 @@ public sealed class CameraIngestHostedService(
         }
     }
 
-    private async Task RunCameraAsync(Guid cameraId, bool emitFrames, float sampleFps, CancellationToken stoppingToken)
+    private async Task RunCameraAsync(
+        Guid cameraId,
+        bool emitFrames,
+        float sampleFps,
+        CancellationToken stoppingToken,
+        CancellationToken hostStoppingToken)
     {
         var attempt = 0;
         while (!stoppingToken.IsCancellationRequested)
@@ -149,17 +173,15 @@ public sealed class CameraIngestHostedService(
                 var cameras = scope.ServiceProvider.GetRequiredService<CameraService>();
                 var storage = scope.ServiceProvider.GetRequiredService<IOptions<StorageOptions>>().Value;
                 var camera = await db.Cameras.FirstOrDefaultAsync(c => c.Id == cameraId, stoppingToken);
-                if (camera is null || !camera.Enabled)
+                if (camera is null || !camera.Enabled || !camera.RecordingEnabled)
                 {
                     return;
                 }
 
                 var url = cameras.ResolveRtspUrl(camera);
                 await RecordStreamMetadataAsync(camera, url, stoppingToken);
-                await FinalizeOpenSegmentsAsync(cameraId, DateTimeOffset.UtcNow, stoppingToken);
-
-                var cameraRoot = Path.Combine(Path.GetFullPath(storage.RecordingsDirectory), camera.Id.ToString("N"));
-                Directory.CreateDirectory(cameraRoot);
+                await FinalizeOpenSegmentsAsync(db, storage.RecordingsDirectory, cameraId, DateTimeOffset.UtcNow, stoppingToken);
+                var cameraRoot = await AlignCameraFolderAsync(db, camera, storage.RecordingsDirectory, stoppingToken);
                 process = ffmpeg.Start(
                     url,
                     camera.Transport.ToString(),
@@ -174,7 +196,7 @@ public sealed class CameraIngestHostedService(
                 var created = Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleReader = true });
                 using var watcher = new FileSystemWatcher(cameraRoot, "*.mp4")
                 {
-                    IncludeSubdirectories = true,
+                    IncludeSubdirectories = false,
                     EnableRaisingEvents = true,
                 };
                 watcher.Created += (_, args) => created.Writer.TryWrite(args.FullPath);
@@ -236,7 +258,13 @@ public sealed class CameraIngestHostedService(
             catch (OperationCanceledException)
             {
                 KillIfRunning(process);
-                await MarkOfflineAsync(cameraId);
+                frames.Drop(cameraId);
+                await FinalizeOpenSegmentsAsync(cameraId, DateTimeOffset.UtcNow, CancellationToken.None);
+                if (!await RecordingStoppedWhileCameraStaysEnabledAsync(cameraId, hostStoppingToken))
+                {
+                    await MarkOfflineAsync(cameraId);
+                }
+
                 return;
             }
             finally
@@ -335,7 +363,7 @@ public sealed class CameraIngestHostedService(
                     !string.Equals(previous, path, StringComparison.OrdinalIgnoreCase))
                 {
                     var nextStart = RecordingPath.TryParseStart(path, out var parsed) ? parsed : DateTimeOffset.UtcNow;
-                    await FinalizeSegmentAsync(previous, nextStart, CancellationToken.None);
+                    await FinalizeSegmentAsync(cameraId, previous, nextStart, CancellationToken.None);
                 }
 
                 await InsertSegmentAsync(cameraId, path, segmentDurationSeconds, CancellationToken.None);
@@ -346,7 +374,7 @@ public sealed class CameraIngestHostedService(
         {
             if (previous is not null)
             {
-                await FinalizeSegmentAsync(previous, DateTimeOffset.UtcNow, CancellationToken.None);
+                await FinalizeSegmentAsync(cameraId, previous, DateTimeOffset.UtcNow, CancellationToken.None);
             }
         }
     }
@@ -394,26 +422,40 @@ public sealed class CameraIngestHostedService(
     {
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var recordings = scope.ServiceProvider.GetRequiredService<IOptions<StorageOptions>>().Value.RecordingsDirectory;
+        await FinalizeOpenSegmentsAsync(db, recordings, cameraId, endUtc, cancellationToken);
+    }
+
+    private async Task FinalizeOpenSegmentsAsync(
+        AppDbContext db,
+        string recordingsDirectory,
+        Guid cameraId,
+        DateTimeOffset endUtc,
+        CancellationToken cancellationToken)
+    {
         var open = await db.RecordingSegments
             .Where(segment => segment.CameraId == cameraId && !segment.IsFinalized)
             .ToListAsync(cancellationToken);
         foreach (var segment in open)
         {
             ApplyFinalize(segment, endUtc);
+            PlaceFinalized(recordingsDirectory, segment);
         }
 
         if (open.Count > 0)
         {
             await db.SaveChangesAsync(cancellationToken);
+            RemoveEmptiedDirectories(recordingsDirectory, cameraId, open);
         }
     }
 
-    private async Task FinalizeSegmentAsync(string path, DateTimeOffset endUtc, CancellationToken cancellationToken)
+    private async Task FinalizeSegmentAsync(Guid cameraId, string path, DateTimeOffset endUtc, CancellationToken cancellationToken)
     {
         try
         {
             await using var scope = scopes.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var recordings = scope.ServiceProvider.GetRequiredService<IOptions<StorageOptions>>().Value.RecordingsDirectory;
             var fullPath = Path.GetFullPath(path);
             var segment = await db.RecordingSegments.FirstOrDefaultAsync(s => s.Path == fullPath, cancellationToken);
             if (segment is null)
@@ -422,11 +464,184 @@ public sealed class CameraIngestHostedService(
             }
 
             ApplyFinalize(segment, endUtc);
+            PlaceFinalized(recordings, segment);
             await db.SaveChangesAsync(cancellationToken);
+            RemoveEmptiedDirectories(recordings, cameraId, [segment]);
         }
         catch (Exception ex)
         {
             logger.LogDebug(ex, "Failed to finalize segment {Path}", path);
+        }
+    }
+
+    private async Task SortExistingFootageAsync(CancellationToken cancellationToken)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var recordings = scope.ServiceProvider.GetRequiredService<IOptions<StorageOptions>>().Value.RecordingsDirectory;
+        var cameras = await db.Cameras.ToListAsync(cancellationToken);
+        foreach (var camera in cameras)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            string directory;
+            try
+            {
+                directory = await AlignCameraFolderAsync(db, camera, recordings, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Could not arrange recordings for camera {CameraId}.", camera.Id);
+                continue;
+            }
+            var segments = await db.RecordingSegments.Where(segment => segment.CameraId == camera.Id).ToListAsync(cancellationToken);
+            var changed = false;
+            foreach (var segment in segments.Where(segment => segment.IsFinalized))
+            {
+                if (PlaceFinalized(recordings, segment))
+                {
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
+                await db.SaveChangesAsync(cancellationToken);
+            }
+
+            RecordingLayout.RemoveEmptyChildDirectories(directory, segments.Where(segment => !segment.IsFinalized).Select(segment => segment.Path));
+        }
+    }
+
+    private async Task<string> AlignCameraFolderAsync(
+        AppDbContext db,
+        Camera camera,
+        string recordingsDirectory,
+        CancellationToken cancellationToken)
+    {
+        var choice = RecordingLayout.Resolve(
+            recordingsDirectory,
+            camera.Id,
+            camera.Name,
+            message => logger.LogWarning("{Message}", message));
+        var segments = await db.RecordingSegments.Where(segment => segment.CameraId == camera.Id).ToListAsync(cancellationToken);
+        var changed = false;
+        foreach (var segment in segments)
+        {
+            changed |= Retarget(segment.Path, recordingsDirectory, choice.Directory, path => segment.Path = path);
+            changed |= Retarget(segment.ThumbnailPath, recordingsDirectory, choice.Directory, path => segment.ThumbnailPath = path);
+        }
+
+        if (changed)
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        return choice.Directory;
+    }
+
+    private bool Retarget(string? storedPath, string recordingsDirectory, string cameraDirectory, Action<string> assign)
+    {
+        var candidate = RecordingLayout.RetargetPath(storedPath, recordingsDirectory, cameraDirectory);
+        if (candidate is null || storedPath is null || !RecordingLayout.ShouldRetarget(storedPath, candidate))
+        {
+            if (candidate is not null && storedPath is not null && File.Exists(storedPath) && File.Exists(candidate) && NoteCollision(candidate))
+            {
+                logger.LogWarning(
+                    "Left {Path} in place because {Destination} is a different file.",
+                    storedPath,
+                    candidate);
+            }
+
+            return false;
+        }
+
+        if (File.Exists(storedPath) && File.Exists(candidate))
+        {
+            try
+            {
+                File.Delete(storedPath);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                logger.LogWarning(ex, "Could not remove duplicate recording {Path}.", storedPath);
+            }
+        }
+
+        assign(candidate);
+        return true;
+    }
+
+    private bool PlaceFinalized(string recordingsDirectory, RecordingSegment segment)
+    {
+        var cameraDirectory = RecordingLayout.CameraDirectoryFor(recordingsDirectory, segment.Path);
+        if (cameraDirectory is null)
+        {
+            return false;
+        }
+
+        var placed = RecordingLayout.Place(cameraDirectory, segment.Path, segment.ThumbnailPath, segment.IsFinalized);
+        if (placed.Result == RecordingPlaceResult.Collided && NoteCollision(placed.Path))
+        {
+            logger.LogWarning(
+                "Left {Path} in place because the day folder already contains a different recording with that name.",
+                placed.Path);
+        }
+
+        if (placed.Result is not (RecordingPlaceResult.Moved or RecordingPlaceResult.Adopted))
+        {
+            return false;
+        }
+
+        segment.Path = placed.Path;
+        segment.ThumbnailPath = placed.ThumbnailPath;
+        return true;
+    }
+
+    private bool NoteCollision(string path)
+    {
+        lock (_collisionGate)
+        {
+            return _collisions.Add(path);
+        }
+    }
+
+    private void RemoveEmptiedDirectories(string recordingsDirectory, Guid cameraId, IEnumerable<RecordingSegment> keep)
+    {
+        var sample = keep.Select(segment => segment.Path).FirstOrDefault(path => !string.IsNullOrWhiteSpace(path));
+        if (sample is null)
+        {
+            return;
+        }
+
+        var directory = RecordingLayout.CameraDirectoryFor(recordingsDirectory, sample);
+        if (directory is null)
+        {
+            return;
+        }
+
+        RecordingLayout.RemoveEmptyChildDirectories(
+            directory,
+            keep.Where(segment => !segment.IsFinalized).Select(segment => segment.Path));
+    }
+
+    private async Task<bool> RecordingStoppedWhileCameraStaysEnabledAsync(Guid cameraId, CancellationToken hostStoppingToken)
+    {
+        if (hostStoppingToken.IsCancellationRequested)
+        {
+            return false;
+        }
+
+        try
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var camera = await db.Cameras.AsNoTracking().FirstOrDefaultAsync(item => item.Id == cameraId);
+            return camera is { Enabled: true, RecordingEnabled: false };
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Could not read camera {CameraId} after recording stopped.", cameraId);
+            return false;
         }
     }
 

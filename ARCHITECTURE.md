@@ -41,13 +41,13 @@ SQLite file: `{Storage:DataDirectory}/{Storage:DatabaseFileName}` (default `data
 
 | Entity | Purpose |
 |---|---|
-| `Camera` | Name, location, RTSP URLs, credentials, transport, last probe stats |
+| `Camera` | Name, location, RTSP URLs, credentials, transport, enabled, recording on/off, last probe stats |
 | `RecordingSegment` | MP4 path, time range, size, human flag, thumbnail, finalized |
 | `DetectionInterval` | Presence window with confidence and optional boxes |
 | `AppSettings` | Retention days, storage cap, inference on/off, sample FPS, threshold |
 | `LocalUser` | Single admin password hash |
 
-Recordings live under `{Storage:RecordingsDirectory}/{cameraId}/` as time-stamped MP4s. Default segment length is 900 seconds (`Storage:SegmentDurationSeconds`).
+Recordings live under `{Storage:RecordingsDirectory}/{cameraId}-{camera-slug}/`. Finished MP4s sit in a `yyyy-MM-dd` folder named from the UTC timestamp in the file. The segment FFmpeg is still writing stays in the camera folder until it is finalized. Default segment length is 900 seconds (`Storage:SegmentDurationSeconds`).
 
 On startup the host migrates the database, resets camera status to offline, and deletes leftover files from the retired events directory if `Storage:EventsDirectory` is still configured.
 

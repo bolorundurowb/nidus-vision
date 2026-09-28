@@ -1,6 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
-import { CameraApi, CameraWrite, cameraWrite } from './api/camera.api';
+import { CameraApi, CameraWrite } from './api/camera.api';
 import { CameraItem, CameraStatus } from './models';
 
 @Injectable({ providedIn: 'root' })
@@ -10,7 +10,7 @@ export class CameraStore {
   readonly loaded = signal(false);
   /** True after the last list request failed; the list is left empty rather than guessed. */
   readonly loadFailed = signal(false);
-  readonly recordingCount = computed(() => this.cameras().filter(c => c.status === 'recording').length);
+  readonly recordingCount = computed(() => this.cameras().filter(c => c.enabled && c.recordingEnabled && c.status === 'recording').length);
   readonly selectedId = signal<string | null>(null);
 
   constructor() {
@@ -44,8 +44,7 @@ export class CameraStore {
     }
   }
 
-  async addCamera(name: string, url: string, location: string, enabled: boolean, username?: string, password?: string): Promise<boolean> {
-    const body: CameraWrite = cameraWrite({ name, url, location, enabled, username, password });
+  async addCamera(body: CameraWrite): Promise<boolean> {
     try {
       const created = await this.api.create(body);
       this.cameras.update(list => [...list, this.api.toItem(created)]);

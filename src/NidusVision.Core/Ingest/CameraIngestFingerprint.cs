@@ -8,6 +8,8 @@ public static class CameraIngestFingerprint
     public static string From(Camera camera, bool inferenceEnabled = true, float sampleFps = 1f) =>
         string.Join('|',
             camera.Enabled ? "1" : "0",
+            camera.RecordingEnabled ? "1" : "0",
+            camera.Name,
             camera.MainRtspUrl,
             (int)camera.Transport,
             camera.Username ?? "",

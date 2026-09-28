@@ -9,6 +9,7 @@ export interface CameraDto {
   name: string;
   location: string;
   enabled: boolean;
+  recordingEnabled: boolean;
   mainRtspUrl: string;
   subRtspUrl: string | null;
   username: string | null;
@@ -25,6 +26,7 @@ export interface CameraWrite {
   name: string;
   location: string;
   enabled: boolean;
+  recordingEnabled: boolean;
   mainRtspUrl: string;
   subRtspUrl: string | null;
   username: string | null;
@@ -58,6 +60,8 @@ export function cameraWrite(input: {
   url: string;
   location?: string;
   enabled?: boolean;
+  recordingEnabled?: boolean;
+  transport?: string;
   username?: string | null;
   password?: string | null;
   clearCredentials?: boolean;
@@ -66,11 +70,12 @@ export function cameraWrite(input: {
     name: input.name.trim() || 'New Camera',
     location: input.location === 'Exterior' ? 'Exterior' : 'Interior',
     enabled: input.enabled ?? true,
+    recordingEnabled: input.recordingEnabled ?? true,
     mainRtspUrl: input.url.trim() || 'rtsp://192.168.1.20:554/stream',
     subRtspUrl: null,
     username: blankToNull(input.username),
     password: blankToNull(input.password),
-    transport: 'tcp',
+    transport: input.transport === 'udp' ? 'udp' : 'tcp',
     clearCredentials: input.clearCredentials ?? false,
   };
 }
@@ -119,6 +124,8 @@ export class CameraApi {
       retention: dto.retention ?? null,
       location: dto.location,
       enabled: dto.enabled,
+      recordingEnabled: dto.recordingEnabled !== false,
+      transport: dto.transport === 'udp' ? 'udp' : 'tcp',
       mainRtspUrl: redactRtspUrl(dto.mainRtspUrl, dto.hasPassword),
       hasCredentials: dto.hasPassword,
     };
