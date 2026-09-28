@@ -79,3 +79,29 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  release:
+    name: GitHub release
+    needs: docker
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history and all tags so the notes can diff against the previous release.
+          fetch-depth: 0
+
+      - name: Create or update release notes
+        id: release
+        uses: actions/github-script@v7
+        env:
+          DOCKER_IMAGE: bolorundurowb/nidus-vision
+        with:
+          script: |
+            const generate = require('./.github/scripts/release-notes.js');
+            await generate({ github, context, core, exec });
+
+      - name: Release URL
+        run: echo "Published ${{ steps.release.outputs.release-url }}"
