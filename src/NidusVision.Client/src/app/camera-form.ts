@@ -32,25 +32,11 @@ export function emptyCameraForm(): CameraFormValue {
       <div class="stack">
         <label>Camera name<input class="input" [value]="name()" (input)="name.set($any($event.target).value)" placeholder="e.g. Side Gate"></label>
         <label>RTSP stream URL<input class="input mono" [value]="url()" (input)="url.set($any($event.target).value)" placeholder="rtsp://192.168.1.20:554/stream"></label>
-      </div>
-    </section>
-    <div class="rule"></div>
-    <section class="form-section">
-      <p class="section-label">Network</p>
-      <div class="field-pair">
         <label>Location
           <span class="select-wrap">
             <select class="input" [value]="location()" (change)="location.set($any($event.target).value)">
               <option value="Interior">Interior</option>
               <option value="Exterior">Exterior</option>
-            </select>
-          </span>
-        </label>
-        <label>Transport
-          <span class="select-wrap">
-            <select class="input" [value]="transport()" (change)="transport.set($any($event.target).value)">
-              <option value="tcp">TCP</option>
-              <option value="udp">UDP</option>
             </select>
           </span>
         </label>

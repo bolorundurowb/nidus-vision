@@ -173,7 +173,13 @@ public sealed class RecordingLibraryService(AppDbContext db, IOptions<StorageOpt
                 if (!File.Exists(match.Path))
                 {
                     match.Path = fullPath;
-                    PlaceFinalized(root, match);
+                    var indexed = PlaceFinalized(root, match, segments);
+                    if (indexed.DropDuplicate)
+                    {
+                        db.RecordingSegments.Remove(match);
+                        segments.Remove(match);
+                    }
+
                     indexedPaths.Add(Path.GetFullPath(match.Path));
                 }
 
@@ -191,7 +197,12 @@ public sealed class RecordingLibraryService(AppDbContext db, IOptions<StorageOpt
                 ByteSize = info.Length,
                 IsFinalized = true,
             };
-            PlaceFinalized(root, segment);
+            var claim = PlaceFinalized(root, segment, segments);
+            if (claim.DropDuplicate)
+            {
+                continue;
+            }
+
             db.RecordingSegments.Add(segment);
             segments.Add(segment);
             indexedPaths.Add(Path.GetFullPath(segment.Path));
@@ -232,21 +243,30 @@ public sealed class RecordingLibraryService(AppDbContext db, IOptions<StorageOpt
         return RecordingPath.TryParseStart(path, out start);
     }
 
-    private static void PlaceFinalized(string recordingsRoot, RecordingSegment segment)
+    private static RecordingPathClaim PlaceFinalized(
+        string recordingsRoot,
+        RecordingSegment segment,
+        IReadOnlyList<RecordingSegment> siblings)
     {
         var cameraDirectory = RecordingLayout.CameraDirectoryFor(recordingsRoot, segment.Path);
         if (cameraDirectory is null)
         {
-            return;
+            return default;
         }
 
         var placed = RecordingLayout.Place(cameraDirectory, segment.Path, segment.ThumbnailPath, segment.IsFinalized);
-        if (placed.Result is RecordingPlaceResult.Moved or RecordingPlaceResult.Adopted)
+        if (placed.Result is not (RecordingPlaceResult.Moved or RecordingPlaceResult.Adopted))
         {
-            segment.Path = placed.Path;
-            segment.ThumbnailPath = placed.ThumbnailPath;
+            return default;
+        }
+
+        var claim = RecordingLayout.ClaimIndexedPath(segment, placed.Path, placed.ThumbnailPath, siblings);
+        if (!claim.DropDuplicate)
+        {
             segment.ByteSize = DiskFileSize.Of(placed.Path, segment.ByteSize);
         }
+
+        return claim;
     }
 
     private static (int Page, int PageSize) NormalizePage(int page, int pageSize) =>

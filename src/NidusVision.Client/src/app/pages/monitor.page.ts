@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, DestroyRef, computed, effect, inject, signal, untracked } from '@angular/core';
 import { CameraApi, TimelineRowDto } from '../api/camera.api';
 import { CameraStore } from '../camera.store';
 import { LiveTile } from '../ui/live-tile';
@@ -52,10 +52,34 @@ interface TimelineView {
         </section>
       } @else {
         <div class="feeds" [attr.data-grid]="grid()">
-          @for (camera of store.cameras().slice(0, grid() * grid()); track camera.id) {
+          @for (camera of visibleCameras(); track camera.id) {
             <app-live-tile [camera]="camera" />
           }
         </div>
+        @if (pageCount() > 1) {
+          <div class="carousel-nav">
+            <button type="button" class="btn outline sm" (click)="prevPage()" aria-label="Show previous cameras">
+              <app-icon name="chevron-left" />
+            </button>
+            <div class="dots" role="tablist" aria-label="Camera pages">
+              @for (n of pageIndexes(); track n) {
+                <button
+                  type="button"
+                  class="dot"
+                  role="tab"
+                  [class.on]="page() === n"
+                  [attr.aria-selected]="page() === n"
+                  [attr.aria-label]="'Show cameras page ' + (n + 1) + ' of ' + pageCount()"
+                  (click)="goToPage(n)"
+                ></button>
+              }
+            </div>
+            <button type="button" class="btn outline sm" (click)="nextPage()" aria-label="Show next cameras">
+              <app-icon name="chevron-right" />
+            </button>
+            <span class="muted page-label">{{ visibleRangeLabel() }}</span>
+          </div>
+        }
       }
       <section class="card timeline">
         <div class="tl-head">
@@ -96,6 +120,12 @@ interface TimelineView {
     app-icon.spin { animation: spin 0.9s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .feeds { display: grid; gap: 1rem; }
+    .carousel-nav { display: flex; align-items: center; justify-content: center; gap: 0.75rem; margin-top: 0.9rem; }
+    .carousel-nav .btn { padding: 0.35rem; }
+    .dots { display: flex; align-items: center; gap: 0.4rem; }
+    .dot { width: 0.5rem; height: 0.5rem; padding: 0; border-radius: 999px; border: 0; background: var(--border); }
+    .dot.on { background: var(--primary); }
+    .page-label { font-size: 0.75rem; margin-left: 0.25rem; }
     .feeds[data-grid='1'] { grid-template-columns: 1fr; }
     .feeds[data-grid='2'] { grid-template-columns: repeat(2, 1fr); }
     .feeds[data-grid='3'] { grid-template-columns: repeat(3, 1fr); }
@@ -127,13 +157,84 @@ export class MonitorPage {
   protected readonly store = inject(CameraStore);
   private readonly cameras = inject(CameraApi);
   protected readonly grid = signal(2);
+  protected readonly page = signal(0);
   protected readonly refreshing = signal(false);
   protected readonly refreshResult = signal<'ok' | 'error' | null>(null);
   protected readonly timeline = signal<TimelineView[]>([]);
   private resultTimer?: ReturnType<typeof setTimeout>;
+  private carouselTimer?: ReturnType<typeof setInterval>;
+
+  private static readonly CAROUSEL_INTERVAL_MS = 8000;
+
+  protected readonly pageSize = computed(() => this.grid() * this.grid());
+  protected readonly pageCount = computed(() =>
+    Math.max(1, Math.ceil(this.store.cameras().length / this.pageSize())),
+  );
+  protected readonly pageIndexes = computed(() => Array.from({ length: this.pageCount() }, (_, i) => i));
+  protected readonly visibleCameras = computed(() => {
+    const size = this.pageSize();
+    const start = this.page() * size;
+    return this.store.cameras().slice(start, start + size);
+  });
 
   constructor() {
     void this.loadTimeline();
+
+    // Keep the current page in range and (re)start auto-cycling whenever the
+    // number of pages changes (grid size change, cameras added/removed).
+    effect(() => {
+      const count = this.pageCount();
+      this.stopCarousel();
+      if (untracked(() => this.page()) >= count) {
+        this.page.set(0);
+      }
+      if (count > 1) {
+        this.startCarousel();
+      }
+    });
+
+    inject(DestroyRef).onDestroy(() => this.stopCarousel());
+  }
+
+  protected visibleRangeLabel(): string {
+    const total = this.store.cameras().length;
+    const size = this.pageSize();
+    const start = this.page() * size + 1;
+    const end = Math.min(total, start + size - 1);
+    return `${start}–${end} of ${total}`;
+  }
+
+  protected goToPage(index: number): void {
+    this.page.set(index);
+    this.restartCarousel();
+  }
+
+  protected prevPage(): void {
+    this.page.update(p => (p - 1 + this.pageCount()) % this.pageCount());
+    this.restartCarousel();
+  }
+
+  protected nextPage(): void {
+    this.page.update(p => (p + 1) % this.pageCount());
+    this.restartCarousel();
+  }
+
+  private restartCarousel(): void {
+    this.stopCarousel();
+    if (this.pageCount() > 1) {
+      this.startCarousel();
+    }
+  }
+
+  private startCarousel(): void {
+    this.carouselTimer = setInterval(() => {
+      this.page.update(p => (p + 1) % this.pageCount());
+    }, MonitorPage.CAROUSEL_INTERVAL_MS);
+  }
+
+  private stopCarousel(): void {
+    clearInterval(this.carouselTimer);
+    this.carouselTimer = undefined;
   }
 
   protected refreshLabel(): string {
