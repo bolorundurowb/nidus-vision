@@ -34,71 +34,36 @@ public sealed class CameraIngestHostedService(
     private readonly Lock _collisionGate = new();
     private readonly HashSet<string> _collisions = new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
 
+    internal static readonly TimeSpan SupervisorInterval = TimeSpan.FromSeconds(5);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // An exception that escapes ExecuteAsync stops the whole host (the default
+        // BackgroundServiceExceptionBehavior), so one transient SQLite or file-system error
+        // here would stop recording on every camera. Only host shutdown ends this loop.
         try
         {
-            await SortExistingFootageAsync(stoppingToken);
+            try
+            {
+                await SortExistingFootageAsync(stoppingToken);
+            }
+            catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
+            {
+                logger.LogError(ex, "Could not sort existing footage at startup. Recording continues.");
+            }
+
             while (!stoppingToken.IsCancellationRequested)
             {
-                await using var scope = scopes.CreateAsyncScope();
-                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-                var cameras = await db.Cameras.AsNoTracking().ToListAsync(stoppingToken);
-                var settings = await db.AppSettings.AsNoTracking().OrderBy(s => s.Id).FirstAsync(stoppingToken);
-                var emitFrames = settings.InferenceEnabled && detector.IsAvailable;
-                var recording = cameras.Where(camera => camera.Enabled && camera.RecordingEnabled).ToDictionary(camera => camera.Id);
-
-                foreach (var id in _runners.Keys)
+                try
                 {
-                    if (!recording.ContainsKey(id))
-                    {
-                        CancelRun(id);
-                    }
+                    await SuperviseOnceAsync(stoppingToken);
+                }
+                catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
+                {
+                    logger.LogError(ex, "Ingest supervisor pass failed. Retrying in {Delay}.", SupervisorInterval);
                 }
 
-                foreach (var camera in cameras)
-                {
-                    var shouldRecord = recording.ContainsKey(camera.Id);
-                    var fingerprint = CameraIngestFingerprint.From(camera, emitFrames, settings.SampleFps);
-                    if (_runners.TryGetValue(camera.Id, out var existing))
-                    {
-                        if (existing.Task.IsCompleted)
-                        {
-                            RemoveRun(camera.Id);
-                        }
-                        else if (!shouldRecord || !string.Equals(existing.Fingerprint, fingerprint, StringComparison.Ordinal))
-                        {
-                            existing.Cts.Cancel();
-                            continue;
-                        }
-                        else
-                        {
-                            continue;
-                        }
-                    }
-
-                    if (!shouldRecord)
-                    {
-                        var recordingsRoot = scope.ServiceProvider.GetRequiredService<IOptions<StorageOptions>>().Value.RecordingsDirectory;
-                        try
-                        {
-                            await AlignCameraFolderAsync(db, camera, recordingsRoot, stoppingToken);
-                        }
-                        catch (Exception ex) when (ex is not OperationCanceledException)
-                        {
-                            logger.LogWarning(ex, "Could not arrange recordings for camera {CameraId}.", camera.Id);
-                        }
-
-                        continue;
-                    }
-
-                    var cts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-                    var run = new CameraRun(fingerprint, cts);
-                    run.Task = RunCameraAsync(camera.Id, emitFrames, settings.SampleFps, cts.Token, stoppingToken);
-                    _runners[camera.Id] = run;
-                }
-
-                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+                await Task.Delay(SupervisorInterval, stoppingToken);
             }
         }
         catch (OperationCanceledException)
@@ -120,6 +85,75 @@ public sealed class CameraIngestHostedService(
             {
                 /* expected when camera runs stop */
             }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "A camera run failed while ingest was stopping.");
+            }
+        }
+    }
+
+    private async Task SuperviseOnceAsync(CancellationToken stoppingToken)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var cameras = await db.Cameras.AsNoTracking().ToListAsync(stoppingToken);
+        var settings = await db.AppSettings.AsNoTracking().OrderBy(s => s.Id).FirstAsync(stoppingToken);
+        var emitFrames = settings.InferenceEnabled && detector.IsAvailable;
+        var recording = cameras.Where(camera => camera.Enabled && camera.RecordingEnabled).ToDictionary(camera => camera.Id);
+
+        foreach (var id in _runners.Keys)
+        {
+            if (!recording.ContainsKey(id))
+            {
+                CancelRun(id);
+            }
+        }
+
+        foreach (var camera in cameras)
+        {
+            var shouldRecord = recording.ContainsKey(camera.Id);
+            var fingerprint = CameraIngestFingerprint.From(camera, emitFrames, settings.SampleFps);
+            if (_runners.TryGetValue(camera.Id, out var existing))
+            {
+                if (existing.Task.IsCompleted)
+                {
+                    if (existing.Task.IsFaulted)
+                    {
+                        logger.LogWarning(existing.Task.Exception, "Ingest run for camera {CameraId} failed. Restarting it.", camera.Id);
+                    }
+
+                    RemoveRun(camera.Id);
+                }
+                else if (!shouldRecord || !string.Equals(existing.Fingerprint, fingerprint, StringComparison.Ordinal))
+                {
+                    existing.Cts.Cancel();
+                    continue;
+                }
+                else
+                {
+                    continue;
+                }
+            }
+
+            if (!shouldRecord)
+            {
+                var recordingsRoot = scope.ServiceProvider.GetRequiredService<IOptions<StorageOptions>>().Value.RecordingsDirectory;
+                try
+                {
+                    await AlignCameraFolderAsync(db, camera, recordingsRoot, stoppingToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    logger.LogWarning(ex, "Could not arrange recordings for camera {CameraId}.", camera.Id);
+                }
+
+                continue;
+            }
+
+            var cts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+            var run = new CameraRun(fingerprint, cts);
+            run.Task = RunCameraAsync(camera.Id, emitFrames, settings.SampleFps, cts.Token, stoppingToken);
+            _runners[camera.Id] = run;
         }
     }
 
@@ -166,6 +200,7 @@ public sealed class CameraIngestHostedService(
         while (!stoppingToken.IsCancellationRequested)
         {
             Process? process = null;
+            long? runStarted = null;
             try
             {
                 await using var scope = scopes.CreateAsyncScope();
@@ -188,6 +223,7 @@ public sealed class CameraIngestHostedService(
                     cameraRoot,
                     storage.EffectiveSegmentDurationSeconds,
                     emitFrames ? sampleFps : null);
+                runStarted = backoff.StartRun();
                 var errors = FfmpegExecutable.CaptureErrors(process);
                 camera.Status = CameraStatus.Recording;
                 await db.SaveChangesAsync(stoppingToken);
@@ -259,7 +295,15 @@ public sealed class CameraIngestHostedService(
             {
                 KillIfRunning(process);
                 frames.Drop(cameraId);
-                await FinalizeOpenSegmentsAsync(cameraId, DateTimeOffset.UtcNow, CancellationToken.None);
+                try
+                {
+                    await FinalizeOpenSegmentsAsync(cameraId, DateTimeOffset.UtcNow, CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Could not finalize open segments for camera {CameraId} after it stopped.", cameraId);
+                }
+
                 if (!await RecordingStoppedWhileCameraStaysEnabledAsync(cameraId, hostStoppingToken))
                 {
                     await MarkOfflineAsync(cameraId);
@@ -277,7 +321,7 @@ public sealed class CameraIngestHostedService(
                 return;
             }
 
-            attempt++;
+            attempt = backoff.NextAttempt(attempt, runStarted);
             await Task.Delay(backoff.DelayForAttempt(attempt), stoppingToken);
         }
     }
@@ -503,46 +547,54 @@ public sealed class CameraIngestHostedService(
         foreach (var camera in cameras)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            string directory;
             try
             {
-                directory = await AlignCameraFolderAsync(db, camera, recordings, cancellationToken);
+                await SortCameraFootageAsync(db, camera, recordings, cancellationToken);
+            }
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                logger.LogWarning(ex, "Could not sort existing recordings for camera {CameraId}. Leaving them in place.", camera.Id);
+                db.ChangeTracker.Clear();
+            }
+        }
+    }
+
+    private async Task SortCameraFootageAsync(
+        AppDbContext db,
+        Camera camera,
+        string recordings,
+        CancellationToken cancellationToken)
+    {
+        var directory = await AlignCameraFolderAsync(db, camera, recordings, cancellationToken);
+        var segments = await db.RecordingSegments.Where(segment => segment.CameraId == camera.Id).ToListAsync(cancellationToken);
+        var changed = false;
+        foreach (var segment in segments.Where(segment => segment.IsFinalized).ToList())
+        {
+            try
+            {
+                var claim = PlaceFinalized(recordings, segment, segments);
+                if (claim.DropDuplicate)
+                {
+                    db.RecordingSegments.Remove(segment);
+                    changed = true;
+                }
+                else if (claim.Changed)
+                {
+                    changed = true;
+                }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                logger.LogWarning(ex, "Could not arrange recordings for camera {CameraId}.", camera.Id);
-                continue;
+                logger.LogWarning(ex, "Could not sort recording {Path} for camera {CameraId}. Leaving it in place.", segment.Path, camera.Id);
             }
-            var segments = await db.RecordingSegments.Where(segment => segment.CameraId == camera.Id).ToListAsync(cancellationToken);
-            var changed = false;
-            foreach (var segment in segments.Where(segment => segment.IsFinalized).ToList())
-            {
-                try
-                {
-                    var claim = PlaceFinalized(recordings, segment, segments);
-                    if (claim.DropDuplicate)
-                    {
-                        db.RecordingSegments.Remove(segment);
-                        changed = true;
-                    }
-                    else if (claim.Changed)
-                    {
-                        changed = true;
-                    }
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    logger.LogWarning(ex, "Could not sort recording {Path} for camera {CameraId}. Leaving it in place.", segment.Path, camera.Id);
-                }
-            }
-
-            if (changed)
-            {
-                await db.SaveChangesAsync(cancellationToken);
-            }
-
-            RecordingLayout.RemoveEmptyChildDirectories(directory, segments.Where(segment => !segment.IsFinalized).Select(segment => segment.Path));
         }
+
+        if (changed)
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        RecordingLayout.RemoveEmptyChildDirectories(directory, segments.Where(segment => !segment.IsFinalized).Select(segment => segment.Path));
     }
 
     private async Task<string> AlignCameraFolderAsync(

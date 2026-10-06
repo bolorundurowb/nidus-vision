@@ -5,6 +5,8 @@
 
 Self-hosted NVR: live view, continuous recording, and person-tagged playback from RTSP cameras.
 
+> The code is MIT. The bundled person-detection model (`person.onnx`, Ultralytics YOLOv8n) is **AGPL-3.0**. See [License](#license).
+
 ![Monitor Center live view with a four-camera grid and recording timeline](docs/monitor.jpg)
 
 ![IP cameras page with per-camera status, bitrate, and stream diagnostics](docs/cameras.png)
@@ -39,7 +41,8 @@ services:
       TZ: UTC
       Storage__DataDirectory: /app/data
       Storage__RecordingsDirectory: /var/nidus/recordings
-      # Optional override. The image already includes /app/models/person.onnx.
+      # Optional override. The image already includes /app/models/person.onnx
+      # (Ultralytics YOLOv8n, AGPL-3.0; see THIRD-PARTY-NOTICES.md).
       # Set this only when the file exists; a missing path turns detection off.
       # NIDUS_PERSON_MODEL: /models/custom-person.onnx
     volumes:
@@ -119,7 +122,7 @@ It does not discover cameras with ONVIF, draw detection zones, send phone or web
 
 Recording does not re-encode, and audio is dropped, so disk use follows the camera's video bitrate. Multiply Mbit/s by 11 for a rough GB-per-day figure: a 4 Mbit/s stream is about 43 GB per camera per day. The Cameras page shows the measured bitrate after the stream connects. Default segments are 15 minutes.
 
-Person detection is on by default and samples about one frame per second at 640×640. That work is separate from recording. The model skips a sample when the content is actually stable. A burned-in clock or night noise does not. Each live tile you open runs its own FFmpeg process.
+Person detection is on by default and samples about one frame per second at 640×640. It uses the bundled Ultralytics YOLOv8n model, which is AGPL-3.0 (see [License](#license)). That work is separate from recording. The model skips a sample when the content is actually stable. A burned-in clock or night noise does not. Each live tile you open runs its own FFmpeg process.
 
 The published image is Linux x86-64 and runs ONNX Runtime with OpenVINO. On a Linux host with an Intel iGPU, map `/dev/dri` and set `group_add` to the host's `video` and `render` group IDs (`getent group video render`; the example uses `44` and `109`). Delete `devices` and `group_add` to run detection on CPU, including under Docker Desktop where `/dev/dri` is absent. A Raspberry Pi or an NVIDIA GPU is outside this image.
 
@@ -157,6 +160,19 @@ nvr.example.com {
 }
 ```
 
+Then tell the app to trust the proxy's `X-Forwarded-For` and `X-Forwarded-Proto` headers. Without this, every visitor looks like it comes from the proxy, so a few wrong passwords from anyone lock out everyone, including you. The cookie also doesn't get the `Secure` flag.
+
+Inside Docker, requests from a proxy on the host arrive from the Docker network gateway, not from `127.0.0.1`. Add that range:
+
+```yaml
+environment:
+  # Docker's default address pools. For a tighter setting, list only the gateway
+  # (`docker network inspect <project>_default`) under ReverseProxy__KnownProxies.
+  ReverseProxy__KnownNetworks: "172.16.0.0/12,192.168.0.0/16"
+```
+
+`ReverseProxy__KnownProxies` takes single IPs, and `ReverseProxy__KnownNetworks` takes CIDR ranges. Both accept a comma-separated list. Loopback is always trusted, which covers a proxy in front of a non-Docker `dotnet run`. Forwarded headers from any other address are ignored. Trust only addresses your proxy actually uses: anything in the listed ranges can choose the client IP the login throttle sees.
+
 ## Notes
 
 - **Clock.** `TZ` sets the container clock, which names segment files in UTC. Times in the UI follow the browser's time zone.
@@ -173,4 +189,13 @@ docker compose -f docker/docker-compose.yml up --build -d
 
 This builds the same multi-stage image locally (Angular client, OpenVINO native libs, `dotnet publish`). Internals, local development without Docker, and tests: [ARCHITECTURE.md](ARCHITECTURE.md).
 
-License: MIT.
+## License
+
+Nidus Vision's source code is released under the [MIT License](LICENSE).
+
+**The bundled person-detection model is licensed separately, under AGPL-3.0.** `person.onnx` (in `src/NidusVision.Web/models/` and at `/app/models/` in the image) is the [Ultralytics](https://github.com/ultralytics/ultralytics) YOLOv8n-person model. It is © Ultralytics under the [GNU Affero General Public License v3.0](src/NidusVision.Web/models/LICENSE-AGPL-3.0.txt), not MIT. The Docker image ships it unmodified, with the licence text and a notice next to it.
+
+- If you redistribute the image or the model, or give other people network access to an instance, the AGPL-3.0 terms apply to the model.
+- To avoid the AGPL model, point `NIDUS_PERSON_MODEL` at a YOLOv8-compatible model under another licence. Or set it to a path that doesn't exist to run with detection off.
+
+Model details and source links: [models/NOTICE.md](src/NidusVision.Web/models/NOTICE.md). All third-party components: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

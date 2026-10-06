@@ -45,8 +45,11 @@ internal static class AuthEndpoints
 
     private static async Task<IResult> Login(LocalAuthService auth, LoginThrottle throttle, [FromBody] PasswordRequest request, HttpContext http, CancellationToken cancellationToken)
     {
+        // RemoteIpAddress is the real client only when UseForwardedHeaders trusts the proxy in
+        // front of the app (ReverseProxy:KnownProxies / KnownNetworks). Otherwise every visitor
+        // would share the proxy's bucket and a stranger could lock the owner out.
         var client = http.Connection.RemoteIpAddress;
-        if (throttle.IsLockedOut(client, out var retryAfter))
+        if (!throttle.TryBeginAttempt(client, out var retryAfter))
         {
             http.Response.Headers.RetryAfter = Math.Ceiling(retryAfter.TotalSeconds).ToString(System.Globalization.CultureInfo.InvariantCulture);
             return TypedResults.Json(
@@ -61,7 +64,7 @@ internal static class AuthEndpoints
 
         if (string.IsNullOrWhiteSpace(request.Password) || !await auth.VerifyAsync(request.Password, cancellationToken))
         {
-            throttle.RecordFailure(client);
+            // The attempt reserved above already counts as the failure.
             return TypedResults.Unauthorized();
         }
 
@@ -101,6 +104,9 @@ internal static class AuthServiceCollectionExtensions
                 options.Cookie.Name = "nidus.auth";
                 options.Cookie.HttpOnly = true;
                 options.Cookie.SameSite = SameSiteMode.Lax;
+                // Secure whenever the request is HTTPS. Behind a TLS proxy that depends on
+                // UseForwardedHeaders trusting the proxy's X-Forwarded-Proto (see ReverseProxySupport).
+                options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
                 options.SlidingExpiration = true;
                 options.Events.OnRedirectToLogin = context =>
                 {

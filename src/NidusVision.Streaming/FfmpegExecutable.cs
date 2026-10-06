@@ -1,5 +1,5 @@
 using System.Diagnostics;
-using System.Text;
+using System.Text.RegularExpressions;
 
 namespace NidusVision.Streaming;
 
@@ -54,7 +54,7 @@ public static class FfmpegExecutable
     }
 }
 
-public sealed class FfmpegErrorLog
+public sealed partial class FfmpegErrorLog
 {
     private const int MaxLines = 40;
     private readonly Queue<string> _lines = new();
@@ -69,7 +69,9 @@ public sealed class FfmpegErrorLog
 
         lock (_gate)
         {
-            _lines.Enqueue(line.Trim());
+            // Redact on the way in so Text, Describe, and anything that logs them never hold
+            // camera credentials. FFmpeg echoes the input URL, userinfo included, on most errors.
+            _lines.Enqueue(Redact(line.Trim()));
             if (_lines.Count > MaxLines)
             {
                 _lines.Dequeue();
@@ -124,26 +126,28 @@ public sealed class FfmpegErrorLog
         return string.IsNullOrWhiteSpace(last) ? fallback : Sanitize(last);
     }
 
-    /// <summary>Strips RTSP userinfo so FFmpeg output never leaks camera credentials.</summary>
-    private static string Sanitize(string line)
+    /// <summary>
+    /// Masks credentials in FFmpeg output: the userinfo of any URL (<c>rtsp://user:pass@host</c>,
+    /// also <c>rtsps</c>, <c>http(s)</c>, and <c>rtmp(s)</c>) and <c>password=</c>-style query
+    /// parameters that some cameras take instead. The host and path stay visible for diagnostics.
+    /// </summary>
+    public static string Redact(string? text)
     {
-        var builder = new StringBuilder(line.Length);
-        var index = 0;
-        while (index < line.Length)
+        if (string.IsNullOrEmpty(text))
         {
-            var at = line.IndexOf("rtsp://", index, StringComparison.OrdinalIgnoreCase);
-            if (at < 0)
-            {
-                builder.Append(line, index, line.Length - index);
-                break;
-            }
-
-            var end = line.IndexOfAny([' ', '\'', '"'], at);
-            end = end < 0 ? line.Length : end;
-            builder.Append(line, index, at - index).Append("rtsp://***");
-            index = end;
+            return text ?? string.Empty;
         }
 
-        return builder.ToString();
+        var masked = UrlUserInfo().Replace(text, "$1***@");
+        return SecretQueryParameter().Replace(masked, "$1***");
     }
+
+    private static string Sanitize(string line) => Redact(line);
+
+    // Greedy up to the last '@' before the path, so a raw '@' inside the password is covered too.
+    [GeneratedRegex(@"(\b(?:rtsps?|rtmps?|https?)://)[^\s/'""]+@", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex UrlUserInfo();
+
+    [GeneratedRegex(@"(\b(?:password|passwd|pwd|pass)=)[^&\s'""]+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex SecretQueryParameter();
 }

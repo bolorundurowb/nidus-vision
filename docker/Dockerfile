@@ -42,6 +42,10 @@ RUN apt-get update \
 COPY --from=build /app/publish ./
 COPY --from=ov-ort /ov/native/ ./
 COPY --from=client /client/dist/NidusVision.Client/browser ./wwwroot
+# The code is MIT. /app/models/person.onnx is Ultralytics YOLOv8n under AGPL-3.0, and its
+# NOTICE.md and LICENSE-AGPL-3.0.txt are published next to it by the models/** content glob.
+COPY LICENSE THIRD-PARTY-NOTICES.md ./
+LABEL org.opencontainers.image.licenses="MIT AND AGPL-3.0"
 COPY docker/entrypoint.sh /usr/local/bin/nidus-entrypoint
 RUN sed -i 's/\r$//' /usr/local/bin/nidus-entrypoint \
     && chmod 0755 /usr/local/bin/nidus-entrypoint \
