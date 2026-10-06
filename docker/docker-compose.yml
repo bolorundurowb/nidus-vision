@@ -24,9 +24,13 @@ services:
       Storage__DataDirectory: /app/data
       Storage__RecordingsDirectory: /var/nidus/recordings
       Storage__EventsDirectory: /var/nidus/events
-      # Optional override. The image already includes /app/models/person.onnx.
+      # Optional override. The image already includes /app/models/person.onnx
+      # (Ultralytics YOLOv8n, AGPL-3.0; see THIRD-PARTY-NOTICES.md).
       # Set this only when the file exists; a missing path turns detection off.
       # NIDUS_PERSON_MODEL: /models/custom-person.onnx
+      # Behind a TLS reverse proxy on the host, trust its X-Forwarded-* headers so the login
+      # throttle sees real client IPs and the auth cookie is marked Secure. See README "Network".
+      # ReverseProxy__KnownNetworks: "172.16.0.0/12,192.168.0.0/16"
       # Optional VAAPI video decode (separate from OpenVINO GPU inference):
       # LIBVA_DRIVER_NAME: iHD
     volumes:

@@ -69,6 +69,9 @@ jobs:
           tags: |
             type=ref,event=tag
             type=raw,value=latest
+          # The repo licence is MIT, but the image also ships the AGPL-3.0 person model.
+          labels: |
+            org.opencontainers.image.licenses=MIT AND AGPL-3.0
 
       - uses: docker/build-push-action@v6
         with:
