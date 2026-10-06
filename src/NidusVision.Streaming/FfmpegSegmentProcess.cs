@@ -55,9 +55,7 @@ public sealed class FfmpegSegmentProcess
             startInfo.ArgumentList.Add("-f");
             startInfo.ArgumentList.Add("segment");
             startInfo.ArgumentList.Add("-segment_time");
-            startInfo.ArgumentList.Add(Math.Min(
-                segmentDurationSeconds,
-                NidusVision.Core.Options.StorageOptions.MaxSegmentDurationSeconds).ToString(CultureInfo.InvariantCulture));
+            startInfo.ArgumentList.Add(segmentDurationSeconds.ToString(CultureInfo.InvariantCulture));
             startInfo.ArgumentList.Add("-reset_timestamps");
             startInfo.ArgumentList.Add("1");
             // Fragment each MP4 so FFmpeg and browsers can read an open segment before

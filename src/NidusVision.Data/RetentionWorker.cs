@@ -44,7 +44,8 @@ public sealed class RetentionWorker(
         var detectionDays = RetentionLimits.ClampDays(settings.DetectionRetentionDays);
         var maxStorageBytes = settings.MaxStorageBytes is { } cap ? Math.Max(cap, RetentionLimits.MinStorageBytes) : (long?)null;
         var segments = await db.RecordingSegments.AsNoTracking().ToListAsync(cancellationToken);
-        var activeSince = now - TimeSpan.FromSeconds(storage.Value.EffectiveSegmentDurationSeconds * 2.0);
+        var segmentDuration = SegmentDurationLimits.ClampSegmentDuration(settings.SegmentDurationSeconds);
+        var activeSince = now - TimeSpan.FromSeconds(segmentDuration * 2.0);
         var infos = segments
             // FFmpeg is still writing a recent unfinalized segment. Leave it for the next cycle.
             // An older unfinalized row is a leftover from a crash, and normal rules apply to it.

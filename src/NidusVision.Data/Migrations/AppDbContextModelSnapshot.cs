@@ -41,6 +41,9 @@ namespace NidusVision.Data.Migrations
                     b.Property<float>("SampleFps")
                         .HasColumnType("REAL");
 
+                    b.Property<int>("SegmentDurationSeconds")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
 
                     b.ToTable("AppSettings");
