@@ -7,7 +7,7 @@ Nidus Vision is a self-hosted NVR: one ASP.NET Core host, an Angular SPA, SQLite
 ```mermaid
 flowchart LR
   Cameras[IP cameras RTSP] --> Ingest[CameraIngestHostedService]
-  Ingest --> Disk[15-minute MP4 segments]
+  Ingest --> Disk[Configurable MP4 segments]
   Ingest --> Broker[DetectionFrameBroker]
   Broker --> Detect[DetectionHostedService]
   Detect --> SQLite[(SQLite WAL)]
@@ -47,7 +47,7 @@ SQLite file: `{Storage:DataDirectory}/{Storage:DatabaseFileName}` (default `data
 | `AppSettings` | Retention days, storage cap, inference on/off, sample FPS, threshold |
 | `LocalUser` | Single admin password hash |
 
-Recordings live under `{Storage:RecordingsDirectory}/{cameraId}-{camera-slug}/`. Finished MP4s sit in a `yyyy-MM-dd` folder named from the UTC timestamp in the file. The segment FFmpeg is still writing stays in the camera folder until it is finalized. Default segment length is 900 seconds (`Storage:SegmentDurationSeconds`).
+Recordings live under `{Storage:RecordingsDirectory}/{cameraId}-{camera-slug}/`. Finished MP4s sit in a `yyyy-MM-dd` folder named from the UTC timestamp in the file. The segment FFmpeg is still writing stays in the camera folder until it is finalized. Segment duration is configured per setting (default 15 min, min 5 min, max 30 min) via `AppSettings.SegmentDurationSeconds`.
 
 On startup the host migrates the database, resets camera status to offline, and deletes leftover files from the retired events directory if `Storage:EventsDirectory` is still configured.
 
@@ -73,7 +73,7 @@ The SPA routes: `/login`, `/monitor`, `/recordings`, `/cameras`, `/settings`.
 
 ## Ingest and live
 
-`CameraIngestHostedService` polls enabled cameras and keeps one FFmpeg run per camera. A fingerprint of URL, credentials, transport, and sample-FPS restarts the process when those change.
+`CameraIngestHostedService` polls enabled cameras and keeps one FFmpeg run per camera. A fingerprint of URL, credentials, transport, sample-FPS, and segment duration restarts the process when those change.
 
 Each run:
 

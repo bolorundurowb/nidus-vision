@@ -99,6 +99,7 @@ public sealed class CameraIngestHostedService(
         var cameras = await db.Cameras.AsNoTracking().ToListAsync(stoppingToken);
         var settings = await db.AppSettings.AsNoTracking().OrderBy(s => s.Id).FirstAsync(stoppingToken);
         var emitFrames = settings.InferenceEnabled && detector.IsAvailable;
+        var segmentDuration = SegmentDurationLimits.ClampSegmentDuration(settings.SegmentDurationSeconds);
         var recording = cameras.Where(camera => camera.Enabled && camera.RecordingEnabled).ToDictionary(camera => camera.Id);
 
         foreach (var id in _runners.Keys)
@@ -112,7 +113,7 @@ public sealed class CameraIngestHostedService(
         foreach (var camera in cameras)
         {
             var shouldRecord = recording.ContainsKey(camera.Id);
-            var fingerprint = CameraIngestFingerprint.From(camera, emitFrames, settings.SampleFps);
+            var fingerprint = CameraIngestFingerprint.From(camera, emitFrames, settings.SampleFps, segmentDuration);
             if (_runners.TryGetValue(camera.Id, out var existing))
             {
                 if (existing.Task.IsCompleted)
@@ -152,7 +153,7 @@ public sealed class CameraIngestHostedService(
 
             var cts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
             var run = new CameraRun(fingerprint, cts);
-            run.Task = RunCameraAsync(camera.Id, emitFrames, settings.SampleFps, cts.Token, stoppingToken);
+            run.Task = RunCameraAsync(camera.Id, emitFrames, settings.SampleFps, segmentDuration, cts.Token, stoppingToken);
             _runners[camera.Id] = run;
         }
     }
@@ -193,6 +194,7 @@ public sealed class CameraIngestHostedService(
         Guid cameraId,
         bool emitFrames,
         float sampleFps,
+        int segmentDurationSeconds,
         CancellationToken stoppingToken,
         CancellationToken hostStoppingToken)
     {
@@ -221,7 +223,7 @@ public sealed class CameraIngestHostedService(
                     url,
                     camera.Transport.ToString(),
                     cameraRoot,
-                    storage.EffectiveSegmentDurationSeconds,
+                    segmentDurationSeconds,
                     emitFrames ? sampleFps : null);
                 runStarted = backoff.StartRun();
                 var errors = FfmpegExecutable.CaptureErrors(process);
@@ -238,7 +240,7 @@ public sealed class CameraIngestHostedService(
                 watcher.Created += (_, args) => created.Writer.TryWrite(args.FullPath);
                 var indexTask = IndexSegmentsAsync(
                     cameraId,
-                    storage.EffectiveSegmentDurationSeconds,
+                    segmentDurationSeconds,
                     created.Reader,
                     stoppingToken);
                 var stdoutTask = emitFrames

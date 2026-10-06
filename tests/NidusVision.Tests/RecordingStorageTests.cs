@@ -19,14 +19,13 @@ public sealed class RecordingStorageTests : IDisposable
     [Fact]
     public void SegmentDurationDefaultsToFifteenMinutes()
     {
-        var options = new StorageOptions();
         var startInfo = new FfmpegSegmentProcess().CreateStartInfo(
             "rtsp://camera/stream",
             "tcp",
             _directory.Path,
-            options.EffectiveSegmentDurationSeconds);
+            SegmentDurationLimits.DefaultSegmentDurationSeconds);
 
-        options.EffectiveSegmentDurationSeconds.Must().Be(900);
+        SegmentDurationLimits.DefaultSegmentDurationSeconds.Must().Be(900);
         AssertArgumentValue(startInfo.ArgumentList, "-segment_time", "900");
         AssertArgumentValue(
             startInfo.ArgumentList,
@@ -60,12 +59,11 @@ public sealed class RecordingStorageTests : IDisposable
     [Fact]
     public void SegmentDurationConfiguredShorterIsNotChanged()
     {
-        var options = new StorageOptions { SegmentDurationSeconds = 5 * 60 };
         var startInfo = new FfmpegSegmentProcess().CreateStartInfo(
             "rtsp://camera/stream",
             "tcp",
             _directory.Path,
-            options.EffectiveSegmentDurationSeconds);
+            SegmentDurationLimits.MinSegmentDurationSeconds);
 
         AssertArgumentValue(startInfo.ArgumentList, "-segment_time", "300");
     }
@@ -73,22 +71,13 @@ public sealed class RecordingStorageTests : IDisposable
     [Fact]
     public void SegmentDurationConfiguredLongerWithinCapIsNotChanged()
     {
-        var options = new StorageOptions { SegmentDurationSeconds = 17 * 60 };
         var startInfo = new FfmpegSegmentProcess().CreateStartInfo(
             "rtsp://camera/stream",
             "tcp",
             _directory.Path,
-            options.EffectiveSegmentDurationSeconds);
+            17 * 60);
 
         AssertArgumentValue(startInfo.ArgumentList, "-segment_time", "1020");
-    }
-
-    [Fact]
-    public void SegmentDurationOverThirtyMinutesIsCapped()
-    {
-        var options = new StorageOptions { SegmentDurationSeconds = 60 * 60 };
-
-        options.EffectiveSegmentDurationSeconds.Must().Be(1800);
     }
 
     [Fact]
@@ -147,6 +136,7 @@ public sealed class RecordingStorageTests : IDisposable
 
         var camera = new Camera { Name = "Front", MainRtspUrl = "rtsp://camera/stream" };
         db.Cameras.Add(camera);
+        db.AppSettings.Add(new AppSettings());
         await db.SaveChangesAsync();
 
         var directory = Path.Combine(recordings, camera.Id.ToString("N"), "2026", "09", "23");

@@ -84,7 +84,7 @@ public sealed class SettingsServiceTests : SqliteTestBase
         var rejected = false;
         try
         {
-            await service.UpdateAsync(new SettingsWriteRequest(generalDays, detectionDays, maxStorageBytes, true, 1f, 0.6f), CancellationToken.None);
+            await service.UpdateAsync(new SettingsWriteRequest(generalDays, detectionDays, maxStorageBytes, true, 1f, 0.6f, SegmentDurationLimits.DefaultSegmentDurationSeconds), CancellationToken.None);
         }
         catch (ArgumentOutOfRangeException)
         {
@@ -110,13 +110,88 @@ public sealed class SettingsServiceTests : SqliteTestBase
 
         // Act
         var response = await service.UpdateAsync(
-            new SettingsWriteRequest(RetentionLimits.MaxDays, RetentionLimits.MinDays, RetentionLimits.MinStorageBytes, true, 1f, 0.6f),
+            new SettingsWriteRequest(RetentionLimits.MaxDays, RetentionLimits.MinDays, RetentionLimits.MinStorageBytes, true, 1f, 0.6f, SegmentDurationLimits.MaxSegmentDurationSeconds),
             CancellationToken.None);
 
         // Assert
         response.GeneralRetentionDays.Must().Be(RetentionLimits.MaxDays);
         response.DetectionRetentionDays.Must().Be(RetentionLimits.MinDays);
         response.MaxStorageBytes.Must().Be(RetentionLimits.MinStorageBytes);
+    }
+
+    [Theory]
+    [InlineData(5 * 60)]
+    [InlineData(15 * 60)]
+    [InlineData(30 * 60)]
+    public async Task UpdateAsyncAcceptsValidSegmentDurations(int segmentDurationSeconds)
+    {
+        // Arrange
+        await using var db = CreateContext();
+        db.AppSettings.Add(new AppSettings());
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+
+        // Act
+        var response = await service.UpdateAsync(
+            new SettingsWriteRequest(30, 90, null, true, 1f, 0.6f, segmentDurationSeconds),
+            CancellationToken.None);
+        var row = await db.AppSettings.AsNoTracking().SingleAsync();
+
+        // Assert
+        response.SegmentDurationSeconds.Must().Be(segmentDurationSeconds);
+        row.SegmentDurationSeconds.Must().Be(segmentDurationSeconds);
+    }
+
+    [Theory]
+    [InlineData(4 * 60)]
+    [InlineData(31 * 60)]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public async Task UpdateAsyncRejectsOutOfRangeSegmentDurations(int segmentDurationSeconds)
+    {
+        // Arrange
+        await using var db = CreateContext();
+        db.AppSettings.Add(new AppSettings());
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+
+        // Act
+        var rejected = false;
+        try
+        {
+            await service.UpdateAsync(
+                new SettingsWriteRequest(30, 90, null, true, 1f, 0.6f, segmentDurationSeconds),
+                CancellationToken.None);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            rejected = true;
+        }
+
+        var row = await db.AppSettings.AsNoTracking().SingleAsync();
+
+        // Assert
+        rejected.Must().BeTrue();
+        row.SegmentDurationSeconds.Must().Be(15 * 60);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(60 * 60)]
+    [InlineData(int.MaxValue)]
+    public async Task GetAsyncClampsAnOutOfRangeStoredSegmentDuration(int storedSeconds)
+    {
+        // Arrange
+        await using var db = CreateContext();
+        db.AppSettings.Add(new AppSettings { SegmentDurationSeconds = storedSeconds });
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+
+        // Act
+        var response = await service.GetAsync(CancellationToken.None);
+
+        // Assert
+        response.SegmentDurationSeconds.Must().Be(SegmentDurationLimits.ClampSegmentDuration(storedSeconds));
     }
 
     private static SettingsService CreateService(AppDbContext db)
@@ -126,5 +201,5 @@ public sealed class SettingsServiceTests : SqliteTestBase
     }
 
     private static SettingsWriteRequest Write(float sampleFps, float confidence) =>
-        new(30, 90, null, true, sampleFps, confidence);
+        new(30, 90, null, true, sampleFps, confidence, SegmentDurationLimits.DefaultSegmentDurationSeconds);
 }

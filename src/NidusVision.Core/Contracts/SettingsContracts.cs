@@ -7,6 +7,7 @@ public sealed record SettingsResponse(
     bool InferenceEnabled,
     float SampleFps,
     float ConfidenceThreshold,
+    int SegmentDurationSeconds,
     string RecordingsDirectory);
 
 public sealed record SettingsWriteRequest(
@@ -15,7 +16,8 @@ public sealed record SettingsWriteRequest(
     long? MaxStorageBytes,
     bool InferenceEnabled,
     float SampleFps,
-    float ConfidenceThreshold);
+    float ConfidenceThreshold,
+    int SegmentDurationSeconds);
 
 public sealed record StorageMetrics(long UsedBytes, long TotalBytes, long RecordingBytes, long DatabaseBytes);
 

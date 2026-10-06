@@ -1,11 +1,12 @@
 using System.Globalization;
 using NidusVision.Core.Models;
+using NidusVision.Core.Options;
 
 namespace NidusVision.Core.Ingest;
 
 public static class CameraIngestFingerprint
 {
-    public static string From(Camera camera, bool inferenceEnabled = true, float sampleFps = 1f) =>
+    public static string From(Camera camera, bool inferenceEnabled = true, float sampleFps = 1f, int segmentDurationSeconds = SegmentDurationLimits.DefaultSegmentDurationSeconds) =>
         string.Join('|',
             camera.Enabled ? "1" : "0",
             camera.RecordingEnabled ? "1" : "0",
@@ -15,5 +16,6 @@ public static class CameraIngestFingerprint
             camera.Username ?? "",
             camera.PasswordProtected ?? "",
             inferenceEnabled ? "1" : "0",
-            sampleFps.ToString("0.###", CultureInfo.InvariantCulture));
+            sampleFps.ToString("0.###", CultureInfo.InvariantCulture),
+            segmentDurationSeconds.ToString(CultureInfo.InvariantCulture));
 }

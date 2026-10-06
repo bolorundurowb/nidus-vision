@@ -187,12 +187,14 @@ public sealed class RecordingLibraryService(AppDbContext db, IOptions<StorageOpt
             }
 
             var info = new FileInfo(fullPath);
+            var settings = await db.AppSettings.AsNoTracking().OrderBy(s => s.Id).FirstAsync(cancellationToken);
+            var segmentDuration = SegmentDurationLimits.ClampSegmentDuration(settings.SegmentDurationSeconds);
             var segment = new RecordingSegment
             {
                 CameraId = cameraId,
                 Path = fullPath,
                 StartUtc = start,
-                EndUtc = start.AddSeconds(storage.Value.EffectiveSegmentDurationSeconds),
+                EndUtc = start.AddSeconds(segmentDuration),
                 Codec = "copy",
                 ByteSize = info.Length,
                 IsFinalized = true,

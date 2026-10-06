@@ -38,6 +38,14 @@ public sealed class SettingsService(AppDbContext db, IOptions<StorageOptions> st
             throw new ArgumentOutOfRangeException(nameof(request.ConfidenceThreshold), "Confidence threshold must be a finite number.");
         }
 
+        if (request.SegmentDurationSeconds is < SegmentDurationLimits.MinSegmentDurationSeconds
+            or > SegmentDurationLimits.MaxSegmentDurationSeconds)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(request.SegmentDurationSeconds),
+                $"Segment duration must be between {SegmentDurationLimits.MinSegmentDurationSeconds / 60} and {SegmentDurationLimits.MaxSegmentDurationSeconds / 60} minutes.");
+        }
+
         var row = await db.AppSettings.OrderBy(s => s.Id).FirstAsync(cancellationToken);
         row.GeneralRetentionDays = request.GeneralRetentionDays;
         row.DetectionRetentionDays = request.DetectionRetentionDays;
@@ -45,6 +53,7 @@ public sealed class SettingsService(AppDbContext db, IOptions<StorageOptions> st
         row.InferenceEnabled = request.InferenceEnabled;
         row.SampleFps = InferenceLimits.ClampSampleFps(request.SampleFps);
         row.ConfidenceThreshold = InferenceLimits.ClampConfidence(request.ConfidenceThreshold);
+        row.SegmentDurationSeconds = request.SegmentDurationSeconds;
         await db.SaveChangesAsync(cancellationToken);
         return ToResponse(row);
     }
@@ -86,5 +95,6 @@ public sealed class SettingsService(AppDbContext db, IOptions<StorageOptions> st
         row.InferenceEnabled,
         row.SampleFps,
         row.ConfidenceThreshold,
+        SegmentDurationLimits.ClampSegmentDuration(row.SegmentDurationSeconds),
         Path.GetFullPath(storage.Value.RecordingsDirectory));
 }
