@@ -19,11 +19,13 @@ public sealed class SettingsService(AppDbContext db, IOptions<StorageOptions> st
 
     public async Task<SettingsResponse> UpdateAsync(SettingsWriteRequest request, CancellationToken cancellationToken)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(request.GeneralRetentionDays, 1);
-        ArgumentOutOfRangeException.ThrowIfLessThan(request.DetectionRetentionDays, 1);
-        if (request.MaxStorageBytes is { } maxStorageBytes)
+        RequireDays(request.GeneralRetentionDays, nameof(request.GeneralRetentionDays));
+        RequireDays(request.DetectionRetentionDays, nameof(request.DetectionRetentionDays));
+        if (request.MaxStorageBytes is { } maxStorageBytes && maxStorageBytes < RetentionLimits.MinStorageBytes)
         {
-            ArgumentOutOfRangeException.ThrowIfLessThan(maxStorageBytes, 1);
+            throw new ArgumentOutOfRangeException(
+                nameof(request.MaxStorageBytes),
+                "The storage cap must be at least 1 GB, or empty for no cap.");
         }
 
         if (!float.IsFinite(request.SampleFps))
@@ -45,6 +47,16 @@ public sealed class SettingsService(AppDbContext db, IOptions<StorageOptions> st
         row.ConfidenceThreshold = InferenceLimits.ClampConfidence(request.ConfidenceThreshold);
         await db.SaveChangesAsync(cancellationToken);
         return ToResponse(row);
+    }
+
+    private static void RequireDays(int days, string name)
+    {
+        if (days is < RetentionLimits.MinDays or > RetentionLimits.MaxDays)
+        {
+            throw new ArgumentOutOfRangeException(
+                name,
+                $"Retention must be between {RetentionLimits.MinDays} and {RetentionLimits.MaxDays} days.");
+        }
     }
 
     public StorageMetrics GetStorageMetrics() => metricsCache.Get();

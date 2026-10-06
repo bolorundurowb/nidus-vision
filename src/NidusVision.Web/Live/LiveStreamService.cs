@@ -71,6 +71,7 @@ public sealed class LiveStreamService(AppDbContext db, CameraService cameras, IL
         if (copied == 0)
         {
             var message = errors.Describe("FFmpeg produced no video for this camera.");
+            // FfmpegErrorLog redacts URL credentials as lines arrive, so the raw text is safe to log.
             logger.LogWarning("Live stream for camera {CameraId} produced no data: {Ffmpeg}", cameraId, errors.Text);
             throw new RtspStreamException(message);
         }
@@ -85,8 +86,9 @@ public sealed class LiveStreamService(AppDbContext db, CameraService cameras, IL
                 process.Kill(entireProcessTree: true);
             }
         }
-        catch (InvalidOperationException)
+        catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or System.ComponentModel.Win32Exception)
         {
+            /* already exited or cannot be killed; never mask the error that ended the stream */
         }
     }
 }

@@ -18,6 +18,7 @@ var legacyEventsDirectory = builder.Configuration["Storage:EventsDirectory"] ?? 
 
 builder.Services.AddNidusData(builder.Configuration);
 builder.Services.AddNidusAuth();
+builder.Services.AddNidusReverseProxy(builder.Configuration);
 var dataDirectory = Path.GetFullPath(builder.Configuration["Storage:DataDirectory"] ?? "data");
 var keysDirectory = Path.Combine(dataDirectory, "keys");
 Directory.CreateDirectory(keysDirectory);
@@ -50,6 +51,10 @@ builder.Services.AddHostedService<RetentionWorker>();
 builder.Services.AddHealthChecks();
 
 var app = builder.Build();
+
+// First in the pipeline: the client IP and scheme must be right before throttling, cookies,
+// or anything else reads them. Only trusted proxies (loopback, plus ReverseProxy:*) are honoured.
+app.UseForwardedHeaders();
 
 await app.InitializeNidusDatabaseAsync();
 CleanupLegacyEventsDirectory(
