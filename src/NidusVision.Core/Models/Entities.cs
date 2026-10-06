@@ -76,6 +76,7 @@ public sealed class AppSettings
     public bool InferenceEnabled { get; set; } = true;
     public float SampleFps { get; set; } = 1f;
     public float ConfidenceThreshold { get; set; } = 0.6f;
+    public int SegmentDurationSeconds { get; set; } = 15 * 60;
 }
 
 public sealed class LocalUser
