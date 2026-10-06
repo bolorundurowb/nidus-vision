@@ -65,6 +65,60 @@ public sealed class SettingsServiceTests : SqliteTestBase
         row.ConfidenceThreshold.Must().Be(0.6f);
     }
 
+    [Theory]
+    [InlineData(0, 90, null)]
+    [InlineData(30, 0, null)]
+    [InlineData(RetentionLimits.MaxDays + 1, 90, null)]
+    [InlineData(30, int.MaxValue, null)]
+    [InlineData(30, 90, 1L)]
+    [InlineData(30, 90, RetentionLimits.MinStorageBytes - 1)]
+    public async Task UpdateAsyncRejectsOutOfRangeRetention(int generalDays, int detectionDays, long? maxStorageBytes)
+    {
+        // Arrange
+        await using var db = CreateContext();
+        db.AppSettings.Add(new AppSettings { MaxStorageBytes = 50L << 30 });
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+
+        // Act
+        var rejected = false;
+        try
+        {
+            await service.UpdateAsync(new SettingsWriteRequest(generalDays, detectionDays, maxStorageBytes, true, 1f, 0.6f), CancellationToken.None);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            rejected = true;
+        }
+
+        var row = await db.AppSettings.AsNoTracking().SingleAsync();
+
+        // Assert
+        rejected.Must().BeTrue();
+        row.GeneralRetentionDays.Must().Be(30);
+        row.MaxStorageBytes.Must().Be(50L << 30);
+    }
+
+    [Fact]
+    public async Task UpdateAsyncAcceptsTheLimits()
+    {
+        // Arrange
+        await using var db = CreateContext();
+        db.AppSettings.Add(new AppSettings());
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+
+        // Act
+        var response = await service.UpdateAsync(
+            new SettingsWriteRequest(RetentionLimits.MaxDays, RetentionLimits.MinDays, RetentionLimits.MinStorageBytes, true, 1f, 0.6f),
+            CancellationToken.None);
+
+        // Assert
+        response.GeneralRetentionDays.Must().Be(RetentionLimits.MaxDays);
+        response.DetectionRetentionDays.Must().Be(RetentionLimits.MinDays);
+        response.MaxStorageBytes.Must().Be(RetentionLimits.MinStorageBytes);
+    }
+
     private static SettingsService CreateService(AppDbContext db)
     {
         var storage = Options.Create(new StorageOptions());

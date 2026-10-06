@@ -44,6 +44,21 @@ public sealed class AuthEndpointTests
     }
 
     [Fact]
+    public async Task ParallelFailedLoginsCannotGetPastTheLimit()
+    {
+        using var app = new AuthApp();
+        using var client = app.CreateClient();
+        (await client.PostAsJsonAsync("/api/auth/setup", new { password = "correct-horse" }))
+            .StatusCode.Must().Be(HttpStatusCode.OK);
+
+        var responses = await Task.WhenAll(Enumerable.Range(0, 20)
+            .Select(_ => client.PostAsJsonAsync("/api/auth/login", new { password = "wrong-password" })));
+
+        responses.Count(r => r.StatusCode == HttpStatusCode.Unauthorized).Must().Be(LoginThrottle.MaxFailures);
+        responses.Count(r => r.StatusCode == HttpStatusCode.TooManyRequests).Must().Be(20 - LoginThrottle.MaxFailures);
+    }
+
+    [Fact]
     public async Task SuccessfulLoginClearsFailures()
     {
         using var app = new AuthApp();
