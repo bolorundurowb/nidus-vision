@@ -28,6 +28,19 @@ public sealed class IngestSupportTests
     }
 
     [Fact]
+    public void FingerprintChangesWhenSegmentDurationChanges()
+    {
+        // Arrange
+        var camera = new Camera { Name = "Front", MainRtspUrl = "rtsp://cam/a" };
+        var original = CameraIngestFingerprint.From(camera, segmentDurationSeconds: 15 * 60);
+
+        // Act and assert
+        CameraIngestFingerprint.From(camera, segmentDurationSeconds: 5 * 60).Must().NotBe(original);
+        CameraIngestFingerprint.From(camera, segmentDurationSeconds: 30 * 60).Must().NotBe(original);
+        CameraIngestFingerprint.From(camera, segmentDurationSeconds: 15 * 60).Must().Be(original);
+    }
+
+    [Fact]
     public void DiskFileSizeReadsFileLengthWhenIndexedSizeIsStale()
     {
         // Arrange
