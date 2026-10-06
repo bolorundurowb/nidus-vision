@@ -19,7 +19,7 @@ public sealed class LoginThrottleTests
 
         // Act
         var results = await Task.WhenAll(Enumerable.Range(0, 50)
-            .Select(_ => Task.Run(() => throttle.TryBeginAttempt(Client, out _))));
+            .Select(_ => Task.Run(() => TryBegin(throttle))));
 
         // Assert
         results.Count(allowed => allowed).Must().Be(LoginThrottle.MaxFailures);
@@ -37,7 +37,7 @@ public sealed class LoginThrottleTests
         }
 
         throttle.TryBeginAttempt(Client, out var retryAfter).Must().BeFalse();
-        (retryAfter > TimeSpan.Zero).Must().BeTrue();
+        retryAfter.Must().BeGreaterThan(TimeSpan.Zero);
 
         // Act
         time.Advance(LoginThrottle.LockoutDuration + TimeSpan.FromSeconds(1));
@@ -160,6 +160,9 @@ public sealed class LoginThrottleTests
         // Assert
         (caught is not null).Must().BeTrue();
     }
+
+    private static bool TryBegin(LoginThrottle throttle) =>
+        throttle.TryBeginAttempt(Client, out _);
 
     private sealed class ManualTimeProvider : TimeProvider
     {
