@@ -82,6 +82,23 @@ type SaveState = 'idle' | 'saving' | 'saved' | 'error';
             }
             <p class="muted help">Leave blank for no storage cap. When the cap is reached, recordings without detections are removed first, then the oldest remaining footage.</p>
             <label>
+              <span>Segment duration <strong>{{ segmentDurationMinutes() }} min</strong></span>
+              <input
+                type="number"
+                min="5"
+                max="30"
+                step="5"
+                [value]="segmentDurationMinutes()"
+                [disabled]="!loaded()"
+                [attr.aria-invalid]="segmentDurationError() ? true : null"
+                (change)="setSegmentDuration($any($event.target))"
+              >
+            </label>
+            @if (segmentDurationError(); as error) {
+              <p class="help error" role="alert">{{ error }}</p>
+            }
+            <p class="muted help">Length of each recording segment. Shorter segments finalize faster and lose less on a crash, but create more files.</p>
+            <label>
               <span>Recordings folder</span>
               <input type="text" readonly [value]="recordingsDirectory()" aria-readonly="true">
             </label>
@@ -181,6 +198,8 @@ export class SettingsPage {
   protected readonly storageLimitGb = signal<number | null>(null);
   protected readonly storageLimitLabel = signal('No limit');
   protected readonly storageLimitError = signal<string | null>(null);
+  protected readonly segmentDurationMinutes = signal(15);
+  protected readonly segmentDurationError = signal<string | null>(null);
   protected readonly recordingsDirectory = signal('Unavailable');
   /** False until the server's values are loaded, so a failed load can't overwrite them with defaults. */
   protected readonly loaded = signal(false);
@@ -238,6 +257,7 @@ export class SettingsPage {
       this.general.set(settings.generalRetentionDays);
       this.detection.set(settings.detectionRetentionDays);
       this.setStorageLimitValue(settings.maxStorageBytes);
+      this.segmentDurationMinutes.set(settings.segmentDurationSeconds / 60);
       if (settings.recordingsDirectory) {
         this.recordingsDirectory.set(settings.recordingsDirectory);
       }
@@ -343,6 +363,7 @@ export class SettingsPage {
       inferenceEnabled: this.inferenceEnabled(),
       sampleFps: this.sampleFps(),
       confidenceThreshold: this.confidenceThreshold(),
+      segmentDurationSeconds: this.segmentDurationMinutes() * 60,
     };
   }
 
@@ -370,6 +391,19 @@ export class SettingsPage {
     this.storageLimitError.set(null);
     this.storageLimitGb.set(gigabytes);
     this.storageLimitLabel.set(gigabytes === null ? 'No limit' : `${gigabytes} GB`);
+    this.queueSave(0);
+  }
+
+  protected setSegmentDuration(input: HTMLInputElement): void {
+    const value = input.value.trim();
+    const minutes = value === '' ? null : Number(value);
+    if (minutes !== null && (!Number.isFinite(minutes) || minutes < 5 || minutes > 30)) {
+      this.segmentDurationError.set('Enter a duration between 5 and 30 minutes.');
+      return;
+    }
+
+    this.segmentDurationError.set(null);
+    this.segmentDurationMinutes.set(minutes ?? 15);
     this.queueSave(0);
   }
 

@@ -9,6 +9,7 @@ export interface SettingsDto {
   inferenceEnabled: boolean;
   sampleFps: number;
   confidenceThreshold: number;
+  segmentDurationSeconds: number;
 }
 
 export interface SettingsReadDto extends SettingsDto {
