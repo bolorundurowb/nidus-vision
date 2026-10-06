@@ -1,7 +1,10 @@
 import { DatePipe } from '@angular/common';
-import { Component, inject, signal } from '@angular/core';
-import { SettingsApi } from '../api/settings.api';
+import { HttpErrorResponse } from '@angular/common/http';
+import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { SettingsApi, SettingsDto } from '../api/settings.api';
 import { AppIcon } from '../ui/app-icon';
+
+type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
 @Component({
   selector: 'app-settings-page',
@@ -16,15 +19,50 @@ import { AppIcon } from '../ui/app-icon';
       <div class="layout">
         <section class="stack">
           <div class="card pad">
-            <h3>Retention policy</h3>
+            <div class="head">
+              <h3>Retention policy</h3>
+              @switch (saveState()) {
+                @case ('saving') { <span class="save-state muted" role="status">Saving…</span> }
+                @case ('saved') { <span class="save-state ok" role="status">Saved</span> }
+                @case ('error') { <span class="save-state error" role="alert">Not saved</span> }
+              }
+            </div>
             <p class="muted">When the storage cap is reached, recordings without detections go first, then older footage.</p>
+            @if (loadError(); as error) {
+              <div class="banner error" role="alert">
+                <span>{{ error }} The controls are locked so the current server values are not overwritten.</span>
+                <button type="button" class="btn outline sm" (click)="retryLoad()">Retry</button>
+              </div>
+            }
+            @if (saveError(); as error) {
+              <div class="banner error" role="alert">
+                <span>{{ error }}</span>
+                <button type="button" class="btn outline sm" (click)="retrySave()">Retry</button>
+              </div>
+            }
             <label>
               <span>General video retention <strong>{{ general() }} days</strong></span>
-              <input type="range" min="1" max="90" [value]="general()" (input)="general.set(+$any($event.target).value); persist()">
+              <input
+                type="range"
+                min="1"
+                [max]="generalMax()"
+                [value]="general()"
+                [disabled]="!loaded()"
+                (input)="general.set(+$any($event.target).value)"
+                (change)="queueSave()"
+              >
             </label>
             <label>
               <span>Recordings with detections <strong>{{ detection() }} days</strong></span>
-              <input type="range" min="1" max="180" [value]="detection()" (input)="detection.set(+$any($event.target).value); persist()">
+              <input
+                type="range"
+                min="1"
+                [max]="detectionMax()"
+                [value]="detection()"
+                [disabled]="!loaded()"
+                (input)="detection.set(+$any($event.target).value)"
+                (change)="queueSave()"
+              >
             </label>
             <label>
               <span>Maximum recording storage <strong>{{ storageLimitLabel() }}</strong></span>
@@ -34,9 +72,14 @@ import { AppIcon } from '../ui/app-icon';
                 step="1"
                 placeholder="No limit"
                 [value]="storageLimitGb() ?? ''"
-                (change)="setStorageLimit($any($event.target).value)"
+                [disabled]="!loaded()"
+                [attr.aria-invalid]="storageLimitError() ? true : null"
+                (change)="setStorageLimit($any($event.target))"
               >
             </label>
+            @if (storageLimitError(); as error) {
+              <p class="help error" role="alert">{{ error }}</p>
+            }
             <p class="muted help">Leave blank for no storage cap. When the cap is reached, recordings without detections are removed first, then the oldest remaining footage.</p>
             <label>
               <span>Recordings folder</span>
@@ -49,6 +92,11 @@ import { AppIcon } from '../ui/app-icon';
               <div>
                 <h3>System & hardware</h3>
                 <p class="muted">Nidus Vision {{ version() }} · Self-hosted instance</p>
+                <p class="muted licence">
+                  <a href="https://github.com/bolorundurowb/nidus-vision" target="_blank" rel="noopener">Source code</a> (MIT).
+                  Person detection uses the Ultralytics YOLOv8n model, licensed under
+                  <a href="https://github.com/bolorundurowb/nidus-vision/blob/main/THIRD-PARTY-NOTICES.md" target="_blank" rel="noopener">AGPL-3.0</a>.
+                </p>
               </div>
               <app-icon name="activity" />
             </div>
@@ -103,6 +151,13 @@ import { AppIcon } from '../ui/app-icon';
     .head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
     .head p { margin: 0.35rem 0 0; }
     .head app-icon { color: var(--emerald); }
+    .licence { font-size: 0.75rem; }
+    .save-state { font-size: 0.75rem; white-space: nowrap; }
+    .error { color: var(--red); }
+    .banner { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-top: 1rem; padding: 0.6rem 0.75rem; border: 1px solid currentColor; border-radius: 0.5rem; font-size: 0.8rem; }
+    .banner span { color: var(--foreground); }
+    input:disabled { opacity: 0.55; cursor: not-allowed; }
+    .licence a { color: inherit; text-decoration: underline; }
     .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-top: 1.25rem; }
     .stats > div { border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.75rem 0.9rem; }
     .stats p { margin: 0; }
@@ -116,12 +171,22 @@ import { AppIcon } from '../ui/app-icon';
   `,
 })
 export class SettingsPage {
+  private static readonly SaveDelayMs = 400;
+
   private readonly api = inject(SettingsApi);
   protected readonly general = signal(30);
   protected readonly detection = signal(90);
+  protected readonly generalMax = computed(() => Math.max(90, this.general()));
+  protected readonly detectionMax = computed(() => Math.max(180, this.detection()));
   protected readonly storageLimitGb = signal<number | null>(null);
   protected readonly storageLimitLabel = signal('No limit');
+  protected readonly storageLimitError = signal<string | null>(null);
   protected readonly recordingsDirectory = signal('Unavailable');
+  /** False until the server's values are loaded, so a failed load can't overwrite them with defaults. */
+  protected readonly loaded = signal(false);
+  protected readonly loadError = signal<string | null>(null);
+  protected readonly saveState = signal<SaveState>('idle');
+  protected readonly saveError = signal<string | null>(null);
   private readonly inferenceEnabled = signal(true);
   private readonly sampleFps = signal(1);
   private readonly confidenceThreshold = signal(0.6);
@@ -138,11 +203,36 @@ export class SettingsPage {
   protected readonly freeSpace = signal('—');
   protected readonly donutGradient = signal('conic-gradient(var(--muted) 0 100%)');
 
+  private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  private saving = false;
+  private saveAgain = false;
+  private savedTimer: ReturnType<typeof setTimeout> | null = null;
+
   constructor() {
+    inject(DestroyRef).onDestroy(() => {
+      if (this.saveTimer !== null) {
+        clearTimeout(this.saveTimer);
+        // Leaving the page must not drop a change the user already made.
+        void this.flush();
+      }
+
+      if (this.savedTimer !== null) {
+        clearTimeout(this.savedTimer);
+      }
+    });
     void this.load();
   }
 
+  protected retryLoad(): void {
+    void this.load();
+  }
+
+  protected retrySave(): void {
+    this.queueSave(0);
+  }
+
   private async load(): Promise<void> {
+    this.loadError.set(null);
     try {
       const settings = await this.api.get();
       this.general.set(settings.generalRetentionDays);
@@ -154,59 +244,146 @@ export class SettingsPage {
       this.inferenceEnabled.set(settings.inferenceEnabled);
       this.sampleFps.set(settings.sampleFps);
       this.confidenceThreshold.set(settings.confidenceThreshold);
-      const metrics = await this.api.metrics();
-      this.version.set(metrics.version);
-      this.cpu.set(`${metrics.cpuPercent.toFixed(0)}%`);
-      this.memory.set(`${this.gbValue(metrics.memoryUsedBytes)} / ${this.gbValue(metrics.memoryTotalBytes)} GB`);
-      this.setUptime(metrics.uptime);
-      const configuredMax = settings.maxStorageBytes;
-      this.unlimited.set(configuredMax === null);
-      if (metrics.storage.usedBytes >= 0) {
-        const total = configuredMax ?? 0;
-        this.usedPct.set(total > 0 ? Math.min(100, Math.round((metrics.storage.usedBytes / total) * 100)) : 0);
-        this.usedLabel.set(configuredMax === null
-          ? `${this.gb(metrics.storage.usedBytes)} used · unlimited`
-          : `${this.gb(metrics.storage.usedBytes)} of ${this.gb(configuredMax)} configured`);
-        if (configuredMax === null) {
-          this.donutGradient.set('conic-gradient(var(--muted) 0 100%)');
-        } else {
-          const g = (metrics.storage.recordingBytes / total) * 100;
-          const db = (metrics.storage.databaseBytes / total) * 100;
-          const gEnd = Math.min(100, g);
-          const dbEnd = Math.min(100, gEnd + db);
-          this.donutGradient.set(
-            `conic-gradient(#3b82f6 0 ${gEnd}%, #94a3b8 ${gEnd}% ${dbEnd}%, var(--muted) ${dbEnd}% 100%)`,
-          );
-        }
-        this.generalVideo.set(this.gb(metrics.storage.recordingBytes));
-        this.systemDatabase.set(this.gb(metrics.storage.databaseBytes));
-        this.freeSpace.set(configuredMax === null ? 'Unlimited' : this.gb(Math.max(0, configuredMax - metrics.storage.usedBytes)));
-      }
-    } catch {
-      /* mock */
-    }
-  }
-
-  protected persist(): void {
-    void this.api.save({
-      generalRetentionDays: this.general(),
-      detectionRetentionDays: this.detection(),
-      maxStorageBytes: this.storageLimitGb() === null ? null : this.storageLimitGb()! * 1024 ** 3,
-      inferenceEnabled: this.inferenceEnabled(),
-      sampleFps: this.sampleFps(),
-      confidenceThreshold: this.confidenceThreshold(),
-    }).catch(() => undefined);
-  }
-
-  protected setStorageLimit(value: string): void {
-    const gigabytes = value === '' ? null : Number(value);
-    if (gigabytes !== null && (!Number.isFinite(gigabytes) || gigabytes < 1)) {
+      this.loaded.set(true);
+    } catch (error) {
+      this.loaded.set(false);
+      this.loadError.set(`Could not load the current settings: ${SettingsPage.describe(error)}.`);
       return;
     }
 
+    // Metrics are informational. A failure here must not lock the retention controls.
+    try {
+      await this.loadMetrics();
+    } catch {
+      this.usedLabel.set('Storage metrics unavailable');
+    }
+  }
+
+  private async loadMetrics(): Promise<void> {
+    const metrics = await this.api.metrics();
+    this.version.set(metrics.version);
+    this.cpu.set(`${metrics.cpuPercent.toFixed(0)}%`);
+    this.memory.set(`${this.gbValue(metrics.memoryUsedBytes)} / ${this.gbValue(metrics.memoryTotalBytes)} GB`);
+    this.setUptime(metrics.uptime);
+    const configuredMax = this.storageLimitGb() === null ? null : this.storageLimitGb()! * 1024 ** 3;
+    this.unlimited.set(configuredMax === null);
+    if (metrics.storage.usedBytes >= 0) {
+      const total = configuredMax ?? 0;
+      this.usedPct.set(total > 0 ? Math.min(100, Math.round((metrics.storage.usedBytes / total) * 100)) : 0);
+      this.usedLabel.set(configuredMax === null
+        ? `${this.gb(metrics.storage.usedBytes)} used · unlimited`
+        : `${this.gb(metrics.storage.usedBytes)} of ${this.gb(configuredMax)} configured`);
+      if (configuredMax === null) {
+        this.donutGradient.set('conic-gradient(var(--muted) 0 100%)');
+      } else {
+        const g = (metrics.storage.recordingBytes / total) * 100;
+        const db = (metrics.storage.databaseBytes / total) * 100;
+        const gEnd = Math.min(100, g);
+        const dbEnd = Math.min(100, gEnd + db);
+        this.donutGradient.set(
+          `conic-gradient(#3b82f6 0 ${gEnd}%, #94a3b8 ${gEnd}% ${dbEnd}%, var(--muted) ${dbEnd}% 100%)`,
+        );
+      }
+      this.generalVideo.set(this.gb(metrics.storage.recordingBytes));
+      this.systemDatabase.set(this.gb(metrics.storage.databaseBytes));
+      this.freeSpace.set(configuredMax === null ? 'Unlimited' : this.gb(Math.max(0, configuredMax - metrics.storage.usedBytes)));
+    }
+  }
+
+  /**
+   * Debounces and serializes saves. Sliders only save on `change` (release or keyboard commit),
+   * at most one PUT is in flight, and a change made during a save triggers one more save with
+   * the latest values. Out-of-order responses can't leave an older value on the server.
+   */
+  protected queueSave(delayMs = SettingsPage.SaveDelayMs): void {
+    if (!this.loaded()) {
+      return;
+    }
+
+    if (this.saveTimer !== null) {
+      clearTimeout(this.saveTimer);
+    }
+
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
+      void this.flush();
+    }, delayMs);
+  }
+
+  private async flush(): Promise<void> {
+    if (this.saving) {
+      this.saveAgain = true;
+      return;
+    }
+
+    this.saving = true;
+    this.saveState.set('saving');
+    this.saveError.set(null);
+    try {
+      do {
+        this.saveAgain = false;
+        await this.api.save(this.snapshot());
+      } while (this.saveAgain);
+      this.saveState.set('saved');
+      this.clearSavedLater();
+    } catch (error) {
+      this.saveState.set('error');
+      this.saveError.set(`Could not save the retention settings: ${SettingsPage.describe(error)}.`);
+    } finally {
+      this.saving = false;
+    }
+  }
+
+  private snapshot(): SettingsDto {
+    const limit = this.storageLimitGb();
+    return {
+      generalRetentionDays: this.general(),
+      detectionRetentionDays: this.detection(),
+      maxStorageBytes: limit === null ? null : Math.round(limit * 1024 ** 3),
+      inferenceEnabled: this.inferenceEnabled(),
+      sampleFps: this.sampleFps(),
+      confidenceThreshold: this.confidenceThreshold(),
+    };
+  }
+
+  private clearSavedLater(): void {
+    if (this.savedTimer !== null) {
+      clearTimeout(this.savedTimer);
+    }
+
+    this.savedTimer = setTimeout(() => {
+      this.savedTimer = null;
+      if (this.saveState() === 'saved') {
+        this.saveState.set('idle');
+      }
+    }, 2000);
+  }
+
+  protected setStorageLimit(input: HTMLInputElement): void {
+    const value = input.value.trim();
+    const gigabytes = value === '' ? null : Number(value);
+    if (gigabytes !== null && (!Number.isFinite(gigabytes) || gigabytes < 1)) {
+      this.storageLimitError.set('Enter at least 1 GB, or leave the field blank for no cap.');
+      return;
+    }
+
+    this.storageLimitError.set(null);
     this.storageLimitGb.set(gigabytes);
     this.storageLimitLabel.set(gigabytes === null ? 'No limit' : `${gigabytes} GB`);
-    this.persist();
+    this.queueSave(0);
+  }
+
+  private static describe(error: unknown): string {
+    if (error instanceof HttpErrorResponse) {
+      const message = (error.error as { message?: unknown } | null)?.message;
+      if (typeof message === 'string' && message.length > 0) {
+        return message;
+      }
+
+      return error.status === 0 ? 'the server could not be reached' : `the server returned ${error.status}`;
+    }
+
+    return 'unexpected error';
   }
 
   private setStorageLimitValue(bytes: number | null): void {
