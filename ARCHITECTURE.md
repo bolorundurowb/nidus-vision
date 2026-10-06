@@ -53,7 +53,13 @@ On startup the host migrates the database, resets camera status to offline, and 
 
 ## HTTP and realtime
 
-Cookie auth after first-visit password setup (`POST /api/auth/...`). Endpoints:
+Cookie auth after first-visit password setup (`POST /api/auth/...`).
+
+- `UseForwardedHeaders` runs first in the pipeline. It honours `X-Forwarded-For`/`-Proto` only from loopback and from `ReverseProxy:KnownProxies` / `ReverseProxy:KnownNetworks` (`ReverseProxySupport`).
+- The cookie is `SameAsRequest` Secure, so behind a trusted TLS proxy it is marked Secure.
+- `LoginThrottle` reserves a slot per client before the password hash is checked, so parallel requests can't slip past the limit. It groups IPv6 clients by /64 and prunes expired entries.
+
+Endpoints:
 
 - `/health`
 - `/api/cameras`, `/api/settings`
@@ -83,7 +89,7 @@ Camera RTSP URLs must be reachable from the process (container). Use a LAN IP, n
 
 `DetectionHostedService` drains the frame broker on a short timer so a slow model cannot stall capture.
 
-- Model file: `models/person.onnx`, or `NIDUS_PERSON_MODEL`.
+- Model file: `models/person.onnx`, or `NIDUS_PERSON_MODEL`. The bundled file is Ultralytics YOLOv8n-person under **AGPL-3.0**, not MIT. Its notice and licence text sit next to it (`models/NOTICE.md`, `models/LICENSE-AGPL-3.0.txt`), and the `models/**` content glob publishes all three together. Keep them together if you move or replace the model; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 - Decode: YOLO-style boxes, letterbox inverse, confidence threshold from settings.
 - `DetectionPresenceTracker` opens/closes `DetectionInterval` rows instead of writing one row per frame.
 - `FrameMotionGate` skips a frame when the content rectangle is unchanged since the last model run. A skip is not a miss, and `EndUtc` advances only when the model runs and still sees someone. The quiet-frame gap is at least 2 seconds while an interval is open and at least 10 seconds when it is not, and only when that camera is drained on time. Closing takes three empty model runs, about four seconds after the person leaves when the loop keeps up, so a following visitor inside that window shares one interval and one `HasHuman` span. A burned-in clock or night noise keeps the model on every sample.
