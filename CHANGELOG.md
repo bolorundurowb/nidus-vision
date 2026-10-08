@@ -4,6 +4,7 @@ Release notes for tagged images (`bolorundurowb/nidus-vision`). The publish work
 
 ## Unreleased
 
+- Release tags now drive the version number: the publish workflow stamps each tag into `Directory.Build.props` and the client `package.json` before building (`stamp-version.sh`), so the Settings page reports the tag's version, and a `sync-versions` job pushes a `chore: bump version` commit to `main` (`sync-version.sh`) so the checked-in API and UI versions track the latest release without manual bump commits.
 - Licensing: the bundled person model (`person.onnx`) is the Ultralytics YOLOv8n-person model, licensed under **AGPL-3.0**, not MIT. The repo and the image now ship its licence text and a notice next to the model (`/app/models/NOTICE.md`, `/app/models/LICENSE-AGPL-3.0.txt`). A new `THIRD-PARTY-NOTICES.md` lists every third-party component, and the image's `org.opencontainers.image.licenses` label now reads `MIT AND AGPL-3.0`. To run a different model, use `NIDUS_PERSON_MODEL`.
 
 - Reverse proxies:

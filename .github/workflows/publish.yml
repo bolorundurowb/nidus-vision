@@ -28,6 +28,9 @@ jobs:
           cache: npm
           cache-dependency-path: src/NidusVision.Client/package-lock.json
 
+      - name: Stamp release version
+        run: bash .github/scripts/stamp-version.sh "${GITHUB_REF_NAME}"
+
       - name: Restore .NET tools
         run: dotnet tool restore
 
@@ -45,6 +48,25 @@ jobs:
           npm ci
           npm run build
 
+  sync-versions:
+    name: Sync version files on main
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          # Full history so a racing push can be resolved by rebasing.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Commit the tagged version to main
+        run: bash .github/scripts/sync-version.sh "${GITHUB_REF_NAME}"
+
   docker:
     name: Push to Docker Hub
     needs: build-and-test
@@ -54,6 +76,15 @@ jobs:
       actions: write
     steps:
       - uses: actions/checkout@v4
+
+      # The image build reads the version files from this checkout, so stamp
+      # the tag's version into them first.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Stamp release version
+        run: bash .github/scripts/stamp-version.sh "${GITHUB_REF_NAME}"
 
       - uses: docker/setup-buildx-action@v3
 
