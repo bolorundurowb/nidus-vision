@@ -7,7 +7,9 @@ RUN npm run build
 
 FROM python:3.12-slim-bookworm AS ov-ort
 WORKDIR /ov
-RUN pip install --no-cache-dir --target /ov/pkg onnxruntime-openvino==1.24.1 \
+# Only the wheel's native libraries are copied into the running image.
+RUN pip install --no-cache-dir --upgrade pip==26.3 \
+    && pip install --no-cache-dir --no-deps --target /ov/pkg onnxruntime-openvino==1.24.1 \
     && mkdir -p /ov/native \
     && find /ov/pkg \( -path '*/onnxruntime/*' -o -path '*/openvino/*' \) -type f \
          \( -name '*.so' -o -name '*.so.*' -o -name '*.xml' -o -name '*.json' -o -name '*.mvcmd' \) \
