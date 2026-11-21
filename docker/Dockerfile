@@ -1,4 +1,4 @@
-FROM node:22-bookworm-slim AS client
+FROM node:26-bookworm-slim AS client
 WORKDIR /client
 COPY src/NidusVision.Client/package.json src/NidusVision.Client/package-lock.json ./
 RUN npm ci

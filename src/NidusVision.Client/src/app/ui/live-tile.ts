@@ -1,10 +1,11 @@
-import { afterNextRender, Component, DestroyRef, ElementRef, inject, input, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, afterNextRender, Component, DestroyRef, ElementRef, inject, input, signal, viewChild } from '@angular/core';
 import { CameraItem, fpsLabel, statLabel } from '../models';
 import { downloadVideoFrame } from '../video-frame';
 import { AppIcon } from './app-icon';
 import { StatusPill } from './status-pill';
 
 @Component({
+  changeDetection: ChangeDetectionStrategy.Eager,
   selector: 'app-live-tile',
   imports: [StatusPill, AppIcon],
   template: `

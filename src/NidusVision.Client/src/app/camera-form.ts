@@ -1,4 +1,4 @@
-import { Component, effect, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, input, signal } from '@angular/core';
 
 export interface CameraFormValue {
   name: string;
@@ -25,6 +25,7 @@ export function emptyCameraForm(): CameraFormValue {
 }
 
 @Component({
+  changeDetection: ChangeDetectionStrategy.Eager,
   selector: 'app-camera-form',
   template: `
     <section class="form-section">

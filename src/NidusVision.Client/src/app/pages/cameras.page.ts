@@ -1,4 +1,4 @@
-import { Component, inject, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal, viewChild } from '@angular/core';
 import { CameraApi, ProbeResult, cameraWrite } from '../api/camera.api';
 import { CameraForm, CameraFormValue } from '../camera-form';
 import { CameraStore } from '../camera.store';
@@ -8,6 +8,7 @@ import { CameraItem, fpsLabel, statLabel } from '../models';
 import { AppIcon } from '../ui/app-icon';
 
 @Component({
+  changeDetection: ChangeDetectionStrategy.Eager,
   selector: 'app-cameras-page',
   imports: [StatusPill, AppIcon, CameraForm],
   template: `

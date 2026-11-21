@@ -1,4 +1,4 @@
-import { Component, DestroyRef, computed, effect, inject, signal, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, signal, untracked } from '@angular/core';
 import { CameraApi, TimelineRowDto } from '../api/camera.api';
 import { CameraStore } from '../camera.store';
 import { LiveTile } from '../ui/live-tile';
@@ -17,6 +17,7 @@ interface TimelineView {
 }
 
 @Component({
+  changeDetection: ChangeDetectionStrategy.Eager,
   selector: 'app-monitor-page',
   imports: [LiveTile, AppIcon],
   template: `

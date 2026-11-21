@@ -1,12 +1,13 @@
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { SettingsApi, SettingsDto } from '../api/settings.api';
 import { AppIcon } from '../ui/app-icon';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
 @Component({
+  changeDetection: ChangeDetectionStrategy.Eager,
   selector: 'app-settings-page',
   imports: [DatePipe, AppIcon],
   template: `
