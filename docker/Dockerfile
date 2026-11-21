@@ -29,7 +29,11 @@ FROM mcr.microsoft.com/dotnet/aspnet:11.0
 WORKDIR /app
 # libze1 and libze-intel-gpu1 are the Level Zero runtime OpenVINO needs to see an
 # Intel iGPU. VA-API (what Jellyfin uses) is a different driver and is not enough.
-RUN apt-get update \
+# Apply distro fixes published since the runtime image was built. Our entrypoint
+# starts dotnet directly, so the inherited Pebble service supervisor is unused.
+RUN rm -f /usr/bin/pebble \
+    && apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends \
         curl ffmpeg \
         libtbb12 libgomp1 \
