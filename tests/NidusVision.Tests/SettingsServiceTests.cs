@@ -1,3 +1,4 @@
+using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using NidusVision.Core.Contracts;
@@ -192,6 +193,20 @@ public sealed class SettingsServiceTests : SqliteTestBase
 
         // Assert
         response.SegmentDurationSeconds.Must().Be(SegmentDurationLimits.ClampSegmentDuration(storedSeconds));
+    }
+
+    [Fact]
+    public async Task GetAsyncReportsTheBuildVersion()
+    {
+        await using var db = CreateContext();
+        db.AppSettings.Add(new AppSettings());
+        await db.SaveChangesAsync();
+
+        var settings = await CreateService(db).GetAsync(CancellationToken.None);
+        var expectedVersion = typeof(SettingsServiceTests).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion;
+
+        settings.Version.Must().Be(expectedVersion);
     }
 
     private static SettingsService CreateService(AppDbContext db)

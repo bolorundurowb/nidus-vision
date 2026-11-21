@@ -8,7 +8,8 @@ public sealed record SettingsResponse(
     float SampleFps,
     float ConfidenceThreshold,
     int SegmentDurationSeconds,
-    string RecordingsDirectory);
+    string RecordingsDirectory,
+    string Version);
 
 public sealed record SettingsWriteRequest(
     int GeneralRetentionDays,
