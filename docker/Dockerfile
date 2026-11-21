@@ -18,14 +18,14 @@ RUN pip install --no-cache-dir --target /ov/pkg onnxruntime-openvino==1.24.1 \
          ln -s "$(basename "$(ls /ov/native/libonnxruntime.so* | head -1)")" /ov/native/libonnxruntime.so; \
        fi
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:11.0 AS build
 WORKDIR /src
 COPY Directory.Build.props NidusVision.slnx ./
 COPY src/ ./src/
 COPY tests/ ./tests/
 RUN dotnet publish src/NidusVision.Web/NidusVision.Web.csproj -c Release -o /app/publish -p:OnnxRuntimeProvider=OpenVino
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0
+FROM mcr.microsoft.com/dotnet/aspnet:11.0
 WORKDIR /app
 # libze1 and libze-intel-gpu1 are the Level Zero runtime OpenVINO needs to see an
 # Intel iGPU. VA-API (what Jellyfin uses) is a different driver and is not enough.
