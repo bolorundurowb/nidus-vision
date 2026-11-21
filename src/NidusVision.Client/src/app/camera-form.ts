@@ -6,6 +6,7 @@ export interface CameraFormValue {
   location: string;
   enabled: boolean;
   recordingEnabled: boolean;
+  retentionDaysOverride: number | null;
   transport: string;
   username: string;
   password: string;
@@ -18,6 +19,7 @@ export function emptyCameraForm(): CameraFormValue {
     location: 'Interior',
     enabled: true,
     recordingEnabled: true,
+    retentionDaysOverride: null,
     transport: 'tcp',
     username: '',
     password: '',
@@ -64,6 +66,15 @@ export function emptyCameraForm(): CameraFormValue {
     </section>
     <div class="rule"></div>
     <section class="form-section">
+      <p class="section-label">Retention</p>
+      <label>General recording retention (days)
+        <input class="input" inputmode="numeric" [value]="retentionDaysOverride()"
+          (input)="retentionDaysOverride.set($any($event.target).value)" placeholder="Use general settings">
+      </label>
+      <p class="muted">Leave blank to inherit the general retention setting.</p>
+    </section>
+    <div class="rule"></div>
+    <section class="form-section">
       <p class="section-label">Credentials</p>
       <div class="field-pair">
         <label>Username<input class="input" autocomplete="off" [value]="username()" (input)="username.set($any($event.target).value)" placeholder="Optional"></label>
@@ -80,6 +91,7 @@ export class CameraForm {
   protected readonly location = signal('Interior');
   protected readonly enabled = signal(true);
   protected readonly recordingEnabled = signal(true);
+  protected readonly retentionDaysOverride = signal('');
   protected readonly transport = signal('tcp');
   protected readonly username = signal('');
   protected readonly password = signal('');
@@ -91,6 +103,7 @@ export class CameraForm {
       this.location.set(value.location === 'Exterior' ? 'Exterior' : 'Interior');
       this.enabled.set(value.enabled);
       this.recordingEnabled.set(value.recordingEnabled);
+      this.retentionDaysOverride.set(value.retentionDaysOverride?.toString() ?? '');
       this.transport.set(value.transport === 'udp' ? 'udp' : 'tcp');
       this.username.set(value.username);
       this.password.set(value.password);
@@ -102,13 +115,23 @@ export class CameraForm {
     this.password.set('');
   }
 
+  retentionError(): string | null {
+    const value = this.retentionDaysOverride().trim();
+    const days = Number(value);
+    return value && (!/^\d+$/.test(value) || days < 1 || days > 3650)
+      ? 'Enter a whole number from 1 to 3650 days or leave retention blank.'
+      : null;
+  }
+
   value(): CameraFormValue {
+    const retention = this.retentionDaysOverride().trim();
     return {
       name: this.name(),
       url: this.url(),
       location: this.location(),
       enabled: this.enabled(),
       recordingEnabled: this.recordingEnabled(),
+      retentionDaysOverride: retention ? Number(retention) : null,
       transport: this.transport() === 'udp' ? 'udp' : 'tcp',
       username: this.username(),
       password: this.password(),

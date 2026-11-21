@@ -37,7 +37,8 @@ public sealed class CameraService(
     {
         var cameras = await db.Cameras.AsNoTracking().OrderBy(c => c.Name).ToListAsync(cancellationToken);
         var stats = await LoadStatsAsync([.. cameras.Select(c => c.Id)], cancellationToken);
-        return [.. cameras.Select(c => ToResponse(c, stats.GetValueOrDefault(c.Id, CameraStatsSnapshot.Empty)))];
+        var generalDays = await GetGeneralRetentionDaysAsync(cancellationToken);
+        return [.. cameras.Select(c => ToResponse(c, stats.GetValueOrDefault(c.Id, CameraStatsSnapshot.Empty), generalDays))];
     }
 
     public async Task<CameraResponse?> GetAsync(Guid id, CancellationToken cancellationToken)
@@ -49,7 +50,7 @@ public sealed class CameraService(
         }
 
         var stats = await LoadStatsAsync([camera.Id], cancellationToken);
-        return ToResponse(camera, stats.GetValueOrDefault(camera.Id, CameraStatsSnapshot.Empty));
+        return ToResponse(camera, stats.GetValueOrDefault(camera.Id, CameraStatsSnapshot.Empty), await GetGeneralRetentionDaysAsync(cancellationToken));
     }
 
     public async Task<CameraResponse> CreateAsync(CameraWriteRequest request, CancellationToken cancellationToken)
@@ -57,7 +58,7 @@ public sealed class CameraService(
         var camera = Apply(new Camera { Name = request.Name, MainRtspUrl = request.MainRtspUrl }, request);
         db.Cameras.Add(camera);
         await db.SaveChangesAsync(cancellationToken);
-        return ToResponse(camera, CameraStatsSnapshot.Empty);
+        return ToResponse(camera, CameraStatsSnapshot.Empty, await GetGeneralRetentionDaysAsync(cancellationToken));
     }
 
     public async Task<CameraResponse?> UpdateAsync(Guid id, CameraWriteRequest request, CancellationToken cancellationToken)
@@ -72,7 +73,7 @@ public sealed class CameraService(
         camera.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
         var stats = await LoadStatsAsync([camera.Id], cancellationToken);
-        return ToResponse(camera, stats.GetValueOrDefault(camera.Id, CameraStatsSnapshot.Empty));
+        return ToResponse(camera, stats.GetValueOrDefault(camera.Id, CameraStatsSnapshot.Empty), await GetGeneralRetentionDaysAsync(cancellationToken));
     }
 
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken)
@@ -133,6 +134,15 @@ public sealed class CameraService(
             CameraUrl.EnsureSupported(sub, nameof(request.SubRtspUrl));
         }
 
+        if (request.RetentionDaysOverride is < RetentionLimits.MinDays or > RetentionLimits.MaxDays)
+        {
+            throw new ArgumentOutOfRangeException(nameof(request.RetentionDaysOverride),
+                $"Retention must be between {RetentionLimits.MinDays} and {RetentionLimits.MaxDays} days.");
+        }
+
+        camera.RetentionDaysOverride = request.UseGeneralRetention
+            ? null
+            : request.RetentionDaysOverride ?? camera.RetentionDaysOverride;
         camera.Name = request.Name.Trim();
         camera.Location = string.Equals(request.Location?.Trim(), nameof(CameraLocation.Exterior), StringComparison.OrdinalIgnoreCase)
             ? CameraLocation.Exterior
@@ -218,7 +228,11 @@ public sealed class CameraService(
     /// <summary>The newest segment is still being written, so its indexed size is stale.</summary>
     private static long SegmentBytes(string path, long indexedBytes) => DiskFileSize.Of(path, indexedBytes);
 
-    private CameraResponse ToResponse(Camera camera, CameraStatsSnapshot stats)
+    private async Task<int> GetGeneralRetentionDaysAsync(CancellationToken cancellationToken) =>
+        await db.AppSettings.OrderBy(s => s.Id).Select(s => (int?)s.GeneralRetentionDays)
+            .FirstOrDefaultAsync(cancellationToken) ?? AppSettings.DefaultGeneralRetentionDays;
+
+    private static CameraResponse ToResponse(Camera camera, CameraStatsSnapshot stats, int generalDays)
     {
         var main = RtspUrlCredentials.Split(camera.MainRtspUrl);
         var hasPassword = camera.PasswordProtected is not null
@@ -240,7 +254,9 @@ public sealed class CameraService(
             camera.LastFps,
             stats.Bitrate,
             stats.Retention,
-            camera.RecordingEnabled);
+            camera.RecordingEnabled,
+            RetentionLimits.ClampDays(camera.RetentionDaysOverride ?? generalDays),
+            camera.RetentionDaysOverride);
     }
 
     private void DeleteRecordingsDirectory(Guid cameraId)

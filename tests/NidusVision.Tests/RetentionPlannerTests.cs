@@ -5,6 +5,20 @@ namespace NidusVision.Tests;
 public sealed class RetentionPlannerTests
 {
     [Fact]
+    public void UsesCameraOverrideForGeneralFootageOnly()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var inherited = new SegmentRetentionInfo(Guid.NewGuid(), now.AddDays(-10), false, 10, "a.mp4");
+        var overridden = new SegmentRetentionInfo(Guid.NewGuid(), now.AddDays(-10), false, 10, "b.mp4", TimeSpan.FromDays(7));
+        var tagged = overridden with { Id = Guid.NewGuid(), HasHuman = true };
+
+        var result = RetentionPlanner.SelectPurge([inherited, overridden, tagged],
+            now, TimeSpan.FromDays(30), TimeSpan.FromDays(90), null);
+
+        result.Must().BeSequenceEqual([overridden]);
+    }
+
+    [Fact]
     public void TimeOnlyDeletesExpiredSegments()
     {
         var now = DateTimeOffset.Parse("2026-09-23T00:00:00Z");
