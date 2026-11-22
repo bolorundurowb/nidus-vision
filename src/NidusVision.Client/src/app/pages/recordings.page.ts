@@ -1,11 +1,12 @@
 import { DatePipe, DecimalPipe } from '@angular/common';
-import { Component, DestroyRef, ElementRef, inject, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { RecordingApi, RecordingDto } from '../api/recording.api';
 import { CameraStore } from '../camera.store';
 import { AppIcon } from '../ui/app-icon';
 import { downloadVideoFrame } from '../video-frame';
 
 @Component({
+  changeDetection: ChangeDetectionStrategy.Eager,
   selector: 'app-recordings-page',
   imports: [DatePipe, DecimalPipe, AppIcon],
   host: { '(document:keydown.escape)': 'closePlayer()' },

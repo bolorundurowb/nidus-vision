@@ -26,7 +26,7 @@ In production Docker, the Angular build is copied into `wwwroot` and served from
 | Project | Role |
 |---|---|
 | `src/NidusVision.Web` | ASP.NET Core host: HTTP APIs, SignalR, hosted workers, SPA fallback |
-| `src/NidusVision.Client` | Angular 21 SPA (monitor, recordings, cameras, settings) |
+| `src/NidusVision.Client` | Angular 22 SPA (monitor, recordings, cameras, settings) |
 | `src/NidusVision.Core` | Entities, options, timeline merge, retention planner, RTSP helpers |
 | `src/NidusVision.Data` | EF Core SQLite, migrations, retention worker |
 | `src/NidusVision.Streaming` | FFmpeg process wrappers (ingest, probe, live) |
@@ -121,7 +121,7 @@ Docker copies OpenVINO native libs from a Python ONNX Runtime OpenVINO wheel int
 
 ## Local development
 
-Requires .NET 11 SDK, Node.js 22+, and FFmpeg on `PATH` or `FFMPEG_PATH`.
+Requires .NET 11 SDK, Node.js 26, and FFmpeg on `PATH` or `FFMPEG_PATH`.
 
 ```bash
 dotnet tool restore

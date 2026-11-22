@@ -1,4 +1,4 @@
-import { Component, inject, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal, viewChild } from '@angular/core';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs';
 import { CameraStore } from './camera.store';
@@ -9,6 +9,7 @@ import { PageId } from './models';
 import { AppIcon, AppIconName } from './ui/app-icon';
 
 @Component({
+  changeDetection: ChangeDetectionStrategy.Eager,
   selector: 'app-root',
   imports: [RouterOutlet, RouterLink, RouterLinkActive, AppIcon, CameraForm],
   templateUrl: './app.html',

@@ -1,4 +1,4 @@
-import { Component, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
 export type AppIconName =
   | 'activity'
@@ -25,6 +25,7 @@ export type AppIconName =
   | 'zap';
 
 @Component({
+  changeDetection: ChangeDetectionStrategy.Eager,
   selector: 'app-icon',
   template: `
     <svg
