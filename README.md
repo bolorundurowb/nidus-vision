@@ -3,183 +3,120 @@
 [![CI](https://github.com/bolorundurowb/nidus-vision/actions/workflows/ci.yml/badge.svg)](https://github.com/bolorundurowb/nidus-vision/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Self-hosted NVR: live view, continuous recording, and person-tagged playback from RTSP cameras.
+Nidus Vision is a self-hosted video recorder for RTSP cameras. Watch live feeds, record continuously to your own disk, and use person detection to find recordings worth reviewing. In **Recordings**, you can play footage, download an MP4 segment, or save a screenshot.
 
-> The code is MIT. The bundled person-detection model (`person.onnx`, Ultralytics YOLOv8n) is **AGPL-3.0**. See [License](#license).
+![Monitor Center showing four live camera feeds and a recording timeline](docs/monitor.jpg)
 
-![Monitor Center live view with a four-camera grid and recording timeline](docs/monitor.jpg)
+## Get started with Docker
 
-![IP cameras page with per-camera status, bitrate, and stream diagnostics](docs/cameras.png)
+You need Docker with the Compose plugin, an x86-64 computer that can run Linux containers, an RTSP camera on your network, and disk space for recordings. Person detection can run on the CPU. An Intel GPU is optional.
 
-## Quick start (Docker Hub image)
+### 1. Start Nidus Vision
 
-Prebuilt images are published to [`bolorundurowb/nidus-vision`](https://hub.docker.com/r/bolorundurowb/nidus-vision) on every release tag. `latest` tracks the most recent release; pin a version tag (for example `v1.0.0`) for reproducible deployments.
-
-Requirements: Docker Engine 24+ with Compose v2, one or more RTSP cameras reachable from the Docker host, and enough disk for recordings.
-
-### 1. Create a compose file
-
-Save this as `docker-compose.yml` in an empty directory:
+Save this as `compose.yaml` in a new directory.
 
 ```yaml
 services:
   nidus-vision:
     image: bolorundurowb/nidus-vision:latest
-    container_name: nidus-vision
     restart: unless-stopped
     ports:
       - "6438:6438"
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    # Intel iGPU inference (OpenVINO). Delete `devices` and `group_add` for CPU-only.
-    devices:
-      - /dev/dri:/dev/dri
-    group_add:
-      - "44"   # video
-      - "109"  # render (check with: getent group render)
-    environment:
-      TZ: UTC
-      Storage__DataDirectory: /app/data
-      Storage__RecordingsDirectory: /var/nidus/recordings
-      # Optional override. The image already includes /app/models/person.onnx
-      # (Ultralytics YOLOv8n, AGPL-3.0; see THIRD-PARTY-NOTICES.md).
-      # Set this only when the file exists; a missing path turns detection off.
-      # NIDUS_PERSON_MODEL: /models/custom-person.onnx
     volumes:
       - nidus-data:/app/data
       - nidus-recordings:/var/nidus/recordings
-    healthcheck:
-      test: ["CMD", "sh", "-c", "curl -f http://localhost:6438/health && curl -f http://localhost:6438/favicon.ico"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
 
 volumes:
   nidus-data:
   nidus-recordings:
 ```
 
-To store recordings on a specific disk, replace the `nidus-recordings` named volume with a bind mount, e.g. `- /mnt/cctv:/var/nidus/recordings`.
+From that directory, run:
 
-### 2. Start the container
+```bash
+docker compose up -d
+```
+
+Open [http://localhost:6438](http://localhost:6438) on the Docker host, or use `http://<host-ip>:6438` from another device on your LAN. The first visit asks you to set the admin password. Use at least eight characters. Nidus Vision has one administrator account.
+
+### 2. Add your first camera
+
+1. Open **Cameras** and enter the camera's RTSP URL. Check your camera's app or manual for the stream path. A typical URL looks like `rtsp://user:password@192.168.1.50:554/stream1`.
+2. Choose an **H.264** stream for browser playback. Nidus Vision saves the camera's video as sent and drops audio. HEVC can be recorded, but browser playback depends on HEVC support.
+3. Test and save the camera, then open **Monitor** to see the live feed. With recording enabled, footage appears in **Recordings** as segments finish.
+
+Use the camera's LAN IP in its URL. If the stream runs on the Docker host, use `host.docker.internal`. Inside the container, `localhost` refers to the container itself.
+
+![Cameras page showing connection status, bitrate, and stream diagnostics](docs/cameras.png)
+
+## Manage recordings and disk space
+
+- **Estimate disk use.** Multiply each camera's video bitrate in Mbit/s by about 11 to get GB per day. A 4 Mbit/s camera uses about 43 GB per day. **Cameras** shows the measured bitrate after the stream connects.
+- **Choose how long to keep footage.** In **Settings**, set separate retention periods for general and person-tagged footage. You can override general retention for an individual camera. An optional storage cap removes older untagged footage before person-tagged footage.
+- **Choose the recording segment length.** In **Settings**, set it from 5 to 30 minutes. The default is 15 minutes.
+- **Use another disk.** Replace the `nidus-recordings:/var/nidus/recordings` service mount with a host path such as `/mnt/cctv:/var/nidus/recordings` when setting up the instance.
+
+Person detection is on by default. In **Settings**, you can turn it off or change the sample rate and confidence threshold. The bundled detection model has its own [license](#license).
+
+## Update and back up
+
+The [Docker Hub image](https://hub.docker.com/r/bolorundurowb/nidus-vision) uses `latest` for the most recent published release. To stay on a specific release, select a published version tag in `image:`. Read the [changelog](CHANGELOG.md) before upgrading.
 
 ```bash
 docker compose pull
 docker compose up -d
 ```
 
-Check it is healthy:
-
-```bash
-docker compose ps
-curl -f http://localhost:6438/health
-```
-
-### 3. Set the admin password
-
-Open http://localhost:6438 (or `http://<host-ip>:6438` from another machine). The first visit redirects to `/login`, where you set an admin password (8+ characters). There is a single admin user; the password is stored in the `nidus-data` volume.
-
-### 4. Add cameras
-
-Go to **Cameras** and add each camera with its RTSP URL, for example `rtsp://user:pass@192.168.1.50:554/stream1`. One URL is used for both recording and live view.
-
-Use an H.264 stream. Recording copies the video and drops the audio, and the browser plays that same stream. H.265/HEVC is stored if that is what the camera sends, but Chrome and Firefox will not play it. If the camera's main stream is H.265, paste its H.264 URL instead.
-
-The URL must be reachable from the **container**:
-
-- Use the camera's LAN IP, not `127.0.0.1` or `localhost`.
-- For a stream served by the Docker host itself, use `host.docker.internal` (the compose file maps it to the host gateway).
-
-Once a camera connects, the Cameras page shows its status, bitrate, and stream diagnostics. Recording starts automatically.
-
-### 5. Watch and play back
-
-- **Monitor** shows the live grid and the recording timeline.
-- **Recordings** lists segments per camera; segments with a detected person are tagged so you can jump straight to them.
-- **Settings** controls retention (separate day limits for general and person-tagged footage, plus an optional storage cap), person detection on/off, sample FPS, and confidence threshold. When the storage cap is hit, untagged footage is evicted before person-tagged footage.
-
-### 6. Update
-
-```bash
-docker compose pull
-docker compose up -d
-```
-
-Data and recordings live in the named volumes and survive image updates. On startup the new container applies database migrations before it serves traffic. To upgrade to a specific release, change the `image:` tag and rerun the two commands above. Read [CHANGELOG.md](CHANGELOG.md) before moving off `latest`.
-
-Camera passwords are encrypted with keys in the `nidus-data` volume. Images built before those keys were stored there kept them in the container filesystem, which is discarded on recreate. After the first update to a build that includes this, open each camera and save the RTSP password again.
-
-The server runs as the unprivileged `app` user. The entrypoint starts as root only long enough to give `nidus-data`, `nidus-recordings`, and `nidus-events` to that user, then drops privileges and keeps the groups from `group_add` plus the groups that own `/dev/dri`. Volumes left behind by images that ran as root are re-owned on the first start, and again if the top directory is no longer owned by `app`. A large recordings volume can take several minutes; the healthcheck waits three minutes before counting failures. A `.nidus-owner` file in each volume records the user id so a later boot does not walk the tree again.
-
-## Scope
-
-Nidus Vision records the camera stream continuously, shows a live grid, tags segments where a person was detected, and deletes old footage by age and an optional disk cap. From **Recordings** you can play a segment, download that MP4, or save a screenshot.
-
-It does not discover cameras with ONVIF, draw detection zones, send phone or webhook alerts, trim a clip out of a segment, record audio, or add users beyond the single admin.
-
-## Capacity
-
-Recording does not re-encode, and audio is dropped, so disk use follows the camera's video bitrate. Multiply Mbit/s by 11 for a rough GB-per-day figure: a 4 Mbit/s stream is about 43 GB per camera per day. The Cameras page shows the measured bitrate after the stream connects. Default segments are 15 minutes.
-
-Person detection is on by default and samples about one frame per second at 640×640. It uses the bundled Ultralytics YOLOv8n model, which is AGPL-3.0 (see [License](#license)). That work is separate from recording. The model skips a sample when the content is actually stable. A burned-in clock or night noise does not. Each live tile you open runs its own FFmpeg process.
-
-The published image is Linux x86-64 and runs ONNX Runtime with OpenVINO. On a Linux host with an Intel iGPU, map `/dev/dri` and set `group_add` to the host's `video` and `render` group IDs (`getent group video render`; the example uses `44` and `109`). Delete `devices` and `group_add` to run detection on CPU, including under Docker Desktop where `/dev/dri` is absent. A Raspberry Pi or an NVIDIA GPU is outside this image.
-
-## Backup
-
-Stop the container first. SQLite uses WAL, and a copy taken while the app is running can produce a database that will not open.
+The named volumes survive container replacement. Nidus Vision applies database migrations at startup. Back up both volumes before upgrading, and stop the app first so the SQLite database and its write-ahead log are copied together.
 
 ```bash
 docker compose stop
 mkdir -p backup/data backup/recordings
-# Names from `docker volume ls`. Compose prefixes them with the project directory.
-docker run --rm -v PROJECT_nidus-data:/from -v "$PWD/backup/data":/to alpine cp -a /from/. /to/
-docker run --rm -v PROJECT_nidus-recordings:/from -v "$PWD/backup/recordings":/to alpine cp -a /from/. /to/
+# Replace PROJECT with the volume prefix shown by docker volume ls.
+docker run --rm -v PROJECT_nidus-data:/from:ro -v "$PWD/backup/data:/to" alpine cp -a /from/. /to/
+docker run --rm -v PROJECT_nidus-recordings:/from:ro -v "$PWD/backup/recordings:/to" alpine cp -a /from/. /to/
 docker compose start
 ```
 
-`backup/data` holds the database, the admin password, camera configuration, and the encryption keys for camera passwords. `backup/recordings` holds the MP4 files. Restore by stopping the container and copying those directories back onto the same volumes, with the `/from` and `/to` mounts swapped.
+If you use a host path for recordings, back up that directory instead of the recordings volume. To restore, stop Nidus Vision and copy each backup's contents back into its corresponding volume or directory before restarting.
 
-Removing the `nidus-data` volume deletes the admin password, cameras, and the recording index. The MP4s in `nidus-recordings` stay on disk, and there is no reindex: Recordings will not list them again.
+Keep the data backup private. It contains the database, camera settings, recording index, and keys used to decrypt saved camera passwords. Removing the data volume resets the admin account and removes camera settings and the recording index. Keeping only the MP4 files does not restore the Recordings library.
 
-## Network
+## Troubleshooting
 
-The app speaks plain HTTP and keeps a long-lived cookie for the one admin account. There is no second factor. Keep port 6438 on the LAN, or bind it to localhost and terminate TLS at a reverse proxy. Do not port-forward 6438 on the router. Report vulnerabilities as described in [SECURITY.md](SECURITY.md).
+| Symptom | What to check |
+| --- | --- |
+| The web page does not open | Run `docker compose ps` and `docker compose logs --tail=100 nidus-vision`. On the host, try `curl -f http://localhost:6438/health`. |
+| A camera won't connect | Check the RTSP path, credentials, and whether the container can reach the camera's LAN address. |
+| The camera connects but the browser shows no video | Select the camera's H.264 stream and update its RTSP URL in **Cameras**. |
+| Saved camera passwords stopped working after upgrading an older image | Re-enter the passwords if that image stored encryption keys in the old container filesystem. New installs keep those keys in the data volume. |
+| The first start after an upgrade takes a while | Older volumes may need ownership repairs before the server starts. Large recordings volumes can take several minutes. Check the container logs. |
 
-To expose it only through Caddy on the same host, publish the port on localhost:
+## Optional setup
 
-```yaml
-ports:
-  - "127.0.0.1:6438:6438"
-```
+### Intel GPU for person detection
 
-```caddyfile
-nvr.example.com {
-  reverse_proxy localhost:6438
-}
-```
-
-Then tell the app to trust the proxy's `X-Forwarded-For` and `X-Forwarded-Proto` headers. Without this, every visitor looks like it comes from the proxy, so a few wrong passwords from anyone lock out everyone, including you. The cookie also doesn't get the `Secure` flag.
-
-Inside Docker, requests from a proxy on the host arrive from the Docker network gateway, not from `127.0.0.1`. Add that range:
+On a Linux host with an Intel GPU, add the following under the Compose service. Replace the example group IDs with those reported by `getent group video render` on your host.
 
 ```yaml
-environment:
-  # Docker's default address pools. For a tighter setting, list only the gateway
-  # (`docker network inspect <project>_default`) under ReverseProxy__KnownProxies.
-  ReverseProxy__KnownNetworks: "172.16.0.0/12,192.168.0.0/16"
+devices:
+  - /dev/dri:/dev/dri
+group_add:
+  - "44"
+  - "109"
 ```
 
-`ReverseProxy__KnownProxies` takes single IPs, and `ReverseProxy__KnownNetworks` takes CIDR ranges. Both accept a comma-separated list. Loopback is always trusted, which covers a proxy in front of a non-Docker `dotnet run`. Forwarded headers from any other address are ignored. Trust only addresses your proxy actually uses: anything in the listed ranges can choose the client IP the login throttle sees.
+The published image uses OpenVINO on Linux x86-64. The default CPU setup also works on Docker Desktop. The published image does not target Raspberry Pi or NVIDIA GPU inference (I don't have the devices to verify against).
 
-## Notes
+### Network access
 
-- **Clock.** `TZ` sets the container clock, which names segment files in UTC. Times in the UI follow the browser's time zone.
-- **Logs.** `docker compose logs -f nidus-vision`.
-- **Reset the admin password.** Stop the container and remove the `nidus-data` volume (`docker volume rm <project>_nidus-data`). This also deletes camera configuration, encryption keys, and the recording index. Video files in `nidus-recordings` remain, unindexed.
+Keep port 6438 on a trusted LAN. Nidus Vision serves HTTP and uses a single admin account without two-factor authentication. For HTTPS, use a reverse proxy and limit access to the backend port. For a proxy running on the same host, bind the published port to `127.0.0.1:6438:6438`.
 
-## Build from source
+Configure `ReverseProxy__KnownProxies` with the proxy's source IP as seen by the app, or `ReverseProxy__KnownNetworks` with its CIDR range. Both accept comma-separated values. A host proxy connecting to Docker typically appears to come from the Docker network gateway. Use `docker network inspect <project>_default` to find it. Trust only your proxy so the app can use the real client IP for login throttling and mark the cookie secure for HTTPS requests.
+
+### Build from source
 
 ```bash
 git clone https://github.com/bolorundurowb/nidus-vision.git
@@ -187,15 +124,10 @@ cd nidus-vision
 docker compose -f docker/docker-compose.yml up --build -d
 ```
 
-This builds the same multi-stage image locally (Angular client, OpenVINO native libs, `dotnet publish`). Internals, local development without Docker, and tests: [ARCHITECTURE.md](ARCHITECTURE.md).
+The source Compose file includes Intel GPU settings. Remove `devices` and `group_add` for CPU-only use. See [ARCHITECTURE.md](ARCHITECTURE.md) for local development and tests, and [SECURITY.md](SECURITY.md) for vulnerability reporting.
 
 ## License
 
-Nidus Vision's source code is released under the [MIT License](LICENSE).
+Nidus Vision's source code is available under the [MIT License](LICENSE). The bundled Ultralytics YOLOv8n person-detection model is separately licensed under [AGPL-3.0](src/NidusVision.Web/models/LICENSE-AGPL-3.0.txt).
 
-**The bundled person-detection model is licensed separately, under AGPL-3.0.** `person.onnx` (in `src/NidusVision.Web/models/` and at `/app/models/` in the image) is the [Ultralytics](https://github.com/ultralytics/ultralytics) YOLOv8n-person model. It is © Ultralytics under the [GNU Affero General Public License v3.0](src/NidusVision.Web/models/LICENSE-AGPL-3.0.txt), not MIT. The Docker image ships it unmodified, with the licence text and a notice next to it.
-
-- If you redistribute the image or the model, or give other people network access to an instance, the AGPL-3.0 terms apply to the model.
-- To avoid the AGPL model, point `NIDUS_PERSON_MODEL` at a YOLOv8-compatible model under another licence. Or set it to a path that doesn't exist to run with detection off.
-
-Model details and source links: [models/NOTICE.md](src/NidusVision.Web/models/NOTICE.md). All third-party components: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+To use a different YOLOv8-compatible model, mount it in the container and point `NIDUS_PERSON_MODEL` at that path. See the [model notice](src/NidusVision.Web/models/NOTICE.md) and [third-party notices](THIRD-PARTY-NOTICES.md) for attribution and license details.
