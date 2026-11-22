@@ -112,12 +112,12 @@ Docker copies OpenVINO native libs from a Python ONNX Runtime OpenVINO wheel int
 
 ## Background work besides ingest
 
-- `ThumbnailWorker` + `VideoThumbnailExtractor` — JPEG thumbs for segments
-- `RetentionWorker` — applies `RetentionPlanner` (age + optional max bytes; detection-tagged footage kept longer)
+- `ThumbnailWorker` + `VideoThumbnailExtractor` generate JPEG thumbnails for segments.
+- `RetentionWorker` applies `RetentionPlanner` using an age limit and an optional storage cap. Detection-tagged footage is kept longer.
 
 ## Docker
 
-`docker/Dockerfile` builds the Angular SPA, publishes the web project with `OnnxRuntimeProvider=OpenVino`, installs FFmpeg, and listens on **6438**. Compose maps `/dev/dri` and `video`/`render` GIDs (`44`/`109` — match the host with `ls -l /dev/dri`). Volumes: `nidus-data`, `nidus-recordings`. `nidus-events` is a one-upgrade mount for deleting old event clips.
+`docker/Dockerfile` builds the Angular SPA, publishes the web project with `OnnxRuntimeProvider=OpenVino`, installs FFmpeg, and listens on **6438**. Compose maps `/dev/dri` and `video`/`render` GIDs (`44`/`109`). Check the host GIDs with `ls -l /dev/dri`. Volumes: `nidus-data`, `nidus-recordings`. `nidus-events` is a one-upgrade mount for deleting old event clips.
 
 ## Local development
 

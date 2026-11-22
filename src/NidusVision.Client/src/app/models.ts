@@ -19,7 +19,7 @@ export interface CameraItem {
 }
 
 /** Shown wherever a camera stat has not been measured yet. */
-export const STAT_PLACEHOLDER = '—';
+export const STAT_PLACEHOLDER = '-';
 
 export function statLabel(value: string | null | undefined): string {
   return value?.trim() || STAT_PLACEHOLDER;

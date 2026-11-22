@@ -2,9 +2,18 @@
 
 Release notes for tagged images (`bolorundurowb/nidus-vision`). The publish workflow pushes a tag and `latest` only after the build and tests pass. Dates are the tag date.
 
-## Unreleased
+## v2.0.0 (2026-11-22)
 
-- Release tags now drive the version number: the publish workflow stamps each tag into `Directory.Build.props` and the client `package.json` before building (`stamp-version.sh`), so the Settings page reports the tag's version, and a `sync-versions` job pushes a `chore: bump version` commit to `main` (`sync-version.sh`) so the checked-in API and UI versions track the latest release without manual bump commits.
+- Cameras can override the default retention period for general footage. Detection-tagged footage still follows the global detection retention period.
+- Settings shows the running server's build version.
+- Upgraded the backend to .NET 11 and the client to Angular 22. Local development now uses the .NET 11 SDK and Node.js 26. The Docker image includes the updated runtime.
+- CI audits NuGet and npm dependencies. The container applies operating system updates, removes the unused Pebble supervisor, and extracts OpenVINO from a checksum-verified wheel.
+- Release tags set the API and client version before publishing. The publish workflow also syncs those versions back to the default branch.
+
+## v1.3.0 (2026-10-06)
+
+- Recording segment length is configurable in Settings from 5 to 30 minutes and defaults to 15 minutes.
+- Updated Angular client dependencies to address security advisories.
 - Licensing: the bundled person model (`person.onnx`) is the Ultralytics YOLOv8n-person model, licensed under **AGPL-3.0**, not MIT. The repo and the image now ship its licence text and a notice next to the model (`/app/models/NOTICE.md`, `/app/models/LICENSE-AGPL-3.0.txt`). A new `THIRD-PARTY-NOTICES.md` lists every third-party component, and the image's `org.opencontainers.image.licenses` label now reads `MIT AND AGPL-3.0`. To run a different model, use `NIDUS_PERSON_MODEL`.
 
 - Reverse proxies:
@@ -21,24 +30,24 @@ Release notes for tagged images (`bolorundurowb/nidus-vision`). The publish work
 - Camera password encryption keys are stored in the data directory (`keys/`, inside the `nidus-data` volume) so they survive a container recreate. Installs that saved camera passwords before this change need those passwords entered again after upgrading, because the previous keys lived only in the container filesystem.
 - README covers codec expectations, disk sizing, backup, upgrades, and the LAN-only network default.
 
-## v1.2.2 — 2026-09-30
+## v1.2.2 (2026-09-30)
 
 - Monitor view handles multiple cameras: tiles resize and reflow instead of overflowing.
 - Recording layout supports nested camera folders; ingest aligns existing footage into the expected structure.
 
-## v1.2.1 — 2026-09-28
+## v1.2.1 (2026-09-28)
 
 - Recordings page: camera form split into its own component, status pill and live tile refinements, and a new `RecordingLayout` that organizes segments by camera and date.
 - Ingest: camera fingerprint includes the recording-enabled flag; supervisor restarts runs when the flag changes.
 - Added `release-notes.js` helper for the publish workflow.
 
-## v1.2.0 — 2026-09-25
+## v1.2.0 (2026-09-25)
 
 - Motion-gated person detection: `FrameMotionGate` skips inference on static frames, cutting CPU/GPU load.
 - `DetectionPresenceTracker` validates intervals and merges overlapping detections.
 - Favicon and branding updated.
 
-## v1.1.0 — 2026-09-18
+## v1.1.0 (2026-09-18)
 
 - Container runs as the non-root `app` user; added `docker/entrypoint.sh`.
 - Login throttle: serializes first-run setup and rate-limits failed logins per client.
@@ -49,11 +58,11 @@ Release notes for tagged images (`bolorundurowb/nidus-vision`). The publish work
 - Index untracked recordings off the request path.
 - Added `CHANGELOG.md` and `SECURITY.md`; encryption keys persist in the data directory.
 
-## v1.0.1 — 2026-09-10
+## v1.0.1 (2026-09-10)
 
 - Fixed Docker deploy UI issues (SPA fallback auth, static file serving).
 - Expanded README with Docker quick start and deployment setup.
 
-## v1.0.0 — 2026-09-08
+## v1.0.0 (2026-09-08)
 
 - Initial release: RTSP ingest with FFmpeg segments, ONNX person detection, retention planner, live view (MSE), event library, camera management, and Docker Compose deployment.

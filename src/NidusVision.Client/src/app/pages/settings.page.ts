@@ -2,6 +2,7 @@ import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { SettingsApi, SettingsDto } from '../api/settings.api';
+import { STAT_PLACEHOLDER } from '../models';
 import { AppIcon } from '../ui/app-icon';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -214,13 +215,13 @@ export class SettingsPage {
   protected readonly usedLabel = signal('Storage metrics unavailable');
   protected readonly usedPct = signal(0);
   protected readonly unlimited = signal(true);
-  protected readonly cpu = signal('—');
-  protected readonly memory = signal('—');
-  protected readonly uptime = signal('—');
+  protected readonly cpu = signal(STAT_PLACEHOLDER);
+  protected readonly memory = signal(STAT_PLACEHOLDER);
+  protected readonly uptime = signal(STAT_PLACEHOLDER);
   protected readonly startedAt = signal<Date | null>(null);
-  protected readonly generalVideo = signal('—');
-  protected readonly systemDatabase = signal('—');
-  protected readonly freeSpace = signal('—');
+  protected readonly generalVideo = signal(STAT_PLACEHOLDER);
+  protected readonly systemDatabase = signal(STAT_PLACEHOLDER);
+  protected readonly freeSpace = signal(STAT_PLACEHOLDER);
   protected readonly donutGradient = signal('conic-gradient(var(--muted) 0 100%)');
 
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
