@@ -1,6 +1,6 @@
 namespace NidusVision.Core.Retention;
 
-public sealed record SegmentRetentionInfo(Guid Id, DateTimeOffset EndUtc, bool HasHuman, long ByteSize, string Path);
+public sealed record SegmentRetentionInfo(Guid Id, DateTimeOffset EndUtc, bool HasHuman, long ByteSize, string Path, TimeSpan? GeneralLifetimeOverride = null);
 
 public static class RetentionPlanner
 {
@@ -14,7 +14,7 @@ public static class RetentionPlanner
         var expired = new List<SegmentRetentionInfo>();
         foreach (var segment in segments)
         {
-            var lifetime = segment.HasHuman ? detectionLifetime : generalLifetime;
+            var lifetime = segment.HasHuman ? detectionLifetime : segment.GeneralLifetimeOverride ?? generalLifetime;
             if (now - segment.EndUtc >= lifetime)
             {
                 expired.Add(segment);

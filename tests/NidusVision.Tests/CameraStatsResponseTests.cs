@@ -80,6 +80,34 @@ public sealed class CameraStatsResponseTests : SqliteTestBase
         cameras[0].Bitrate.Must().Be("133 kbps");
     }
 
+    [Fact]
+    public async Task RetentionInheritsSettingsAndSupportsAnExplicitOverrideAndReset()
+    {
+        await using var db = CreateContext();
+        var settings = new AppSettings { GeneralRetentionDays = 45 };
+        db.AppSettings.Add(settings);
+        await db.SaveChangesAsync(CancellationToken.None);
+        var service = CreateService(db);
+        var request = new NidusVision.Core.Contracts.CameraWriteRequest(
+            "Front", null, true, "rtsp://localhost/front", null, null, null, "tcp");
+
+        var created = await service.CreateAsync(request, CancellationToken.None);
+        created.RetentionDays.Must().Be(45);
+        created.RetentionDaysOverride.VerifyNullable().BeNull();
+
+        var updated = await service.UpdateAsync(created.Id, request with { RetentionDaysOverride = 7 }, CancellationToken.None);
+        updated!.RetentionDays.Must().Be(7);
+
+        settings.GeneralRetentionDays = 60;
+        await db.SaveChangesAsync(CancellationToken.None);
+        var unchanged = await service.UpdateAsync(created.Id, request, CancellationToken.None);
+        unchanged!.RetentionDays.Must().Be(7);
+
+        var reset = await service.UpdateAsync(created.Id, request with { UseGeneralRetention = true }, CancellationToken.None);
+        reset!.RetentionDays.Must().Be(60);
+        reset.RetentionDaysOverride.VerifyNullable().BeNull();
+    }
+
     private CameraService CreateService(AppDbContext db) =>
         new(
             db,

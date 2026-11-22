@@ -40,7 +40,7 @@ import { AppIcon } from '../ui/app-icon';
               <div><dt>Resolution</dt><dd>{{ statLabel(camera.resolution) }}</dd></div>
               <div><dt>Bitrate</dt><dd>{{ statLabel(camera.bitrate) }}</dd></div>
               <div><dt>Framerate</dt><dd>{{ fpsLabel(camera.fps) }}</dd></div>
-              <div><dt>Retention</dt><dd>{{ statLabel(camera.retention) }}</dd></div>
+              <div><dt>Retention</dt><dd>{{ camera.retentionDays }} days{{ camera.retentionDaysOverride === null ? ' (general)' : '' }}</dd></div>
             </dl>
             <button type="button" class="btn outline sm full" (click)="configure(camera.id)">
               <app-icon name="settings" />Configure
@@ -173,6 +173,7 @@ export class CamerasPage {
       location: camera.location,
       enabled: camera.enabled,
       recordingEnabled: camera.recordingEnabled,
+      retentionDaysOverride: camera.retentionDaysOverride,
       transport: camera.transport,
       username: '',
       password: '',
@@ -218,7 +219,16 @@ export class CamerasPage {
       return;
     }
     try {
-      const saved = await this.api.update(camera.id, this.writeBody(form));
+      const message = this.form()?.retentionError();
+      if (message) {
+        this.probeResult.set({ ok: false, message });
+        return;
+      }
+      const saved = await this.api.update(camera.id, {
+        ...this.writeBody(form),
+        retentionDaysOverride: form.retentionDaysOverride ?? undefined,
+        useGeneralRetention: !form.retentionDaysOverride,
+      });
       this.store.cameras.update(list => list.map(c => (c.id === camera.id ? this.api.toItem(saved) : c)));
       this.close();
     } catch {

@@ -19,7 +19,8 @@ export interface CameraDto {
   resolution: string | null;
   fps: number | null;
   bitrate: string | null;
-  retention: string | null;
+  retentionDays: number;
+  retentionDaysOverride: number | null;
 }
 
 export interface CameraWrite {
@@ -33,6 +34,8 @@ export interface CameraWrite {
   password: string | null;
   transport: string;
   clearCredentials?: boolean;
+  retentionDaysOverride?: number;
+  useGeneralRetention?: boolean;
 }
 
 export interface ProbeResult {
@@ -65,6 +68,8 @@ export function cameraWrite(input: {
   username?: string | null;
   password?: string | null;
   clearCredentials?: boolean;
+  retentionDaysOverride?: number;
+  useGeneralRetention?: boolean;
 }): CameraWrite {
   return {
     name: input.name.trim() || 'New Camera',
@@ -77,6 +82,8 @@ export function cameraWrite(input: {
     password: blankToNull(input.password),
     transport: input.transport === 'udp' ? 'udp' : 'tcp',
     clearCredentials: input.clearCredentials ?? false,
+    retentionDaysOverride: input.retentionDaysOverride,
+    useGeneralRetention: input.useGeneralRetention,
   };
 }
 
@@ -121,7 +128,8 @@ export class CameraApi {
       resolution: dto.resolution ?? null,
       fps: dto.fps ?? null,
       bitrate: dto.bitrate ?? null,
-      retention: dto.retention ?? null,
+      retentionDays: dto.retentionDays,
+      retentionDaysOverride: dto.retentionDaysOverride,
       location: dto.location,
       enabled: dto.enabled,
       recordingEnabled: dto.recordingEnabled !== false,

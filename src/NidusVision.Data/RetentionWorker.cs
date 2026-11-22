@@ -43,6 +43,10 @@ public sealed class RetentionWorker(
         var generalDays = RetentionLimits.ClampDays(settings.GeneralRetentionDays);
         var detectionDays = RetentionLimits.ClampDays(settings.DetectionRetentionDays);
         var maxStorageBytes = settings.MaxStorageBytes is { } cap ? Math.Max(cap, RetentionLimits.MinStorageBytes) : (long?)null;
+        var overrides = await db.Cameras.AsNoTracking()
+            .Where(c => c.RetentionDaysOverride != null)
+            .ToDictionaryAsync(c => c.Id,
+                c => TimeSpan.FromDays(RetentionLimits.ClampDays(c.RetentionDaysOverride!.Value)), cancellationToken);
         var segments = await db.RecordingSegments.AsNoTracking().ToListAsync(cancellationToken);
         var segmentDuration = SegmentDurationLimits.ClampSegmentDuration(settings.SegmentDurationSeconds);
         var activeSince = now - TimeSpan.FromSeconds(segmentDuration * 2.0);
@@ -50,7 +54,8 @@ public sealed class RetentionWorker(
             // FFmpeg is still writing a recent unfinalized segment. Leave it for the next cycle.
             // An older unfinalized row is a leftover from a crash, and normal rules apply to it.
             .Where(s => s.IsFinalized || s.StartUtc < activeSince)
-            .Select(s => new SegmentRetentionInfo(s.Id, s.EndUtc, s.HasHuman, DiskFileSize.Of(s.Path, s.ByteSize), s.Path))
+            .Select(s => new SegmentRetentionInfo(s.Id, s.EndUtc, s.HasHuman, DiskFileSize.Of(s.Path, s.ByteSize), s.Path,
+                overrides.TryGetValue(s.CameraId, out var lifetime) ? lifetime : null))
             .ToList();
         var purge = RetentionPlanner.SelectPurge(
             infos,

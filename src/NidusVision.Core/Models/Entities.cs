@@ -26,6 +26,7 @@ public sealed class Camera
     public CameraLocation Location { get; set; } = CameraLocation.Interior;
     public bool Enabled { get; set; } = true;
     public bool RecordingEnabled { get; set; } = true;
+    public int? RetentionDaysOverride { get; set; }
     public required string MainRtspUrl { get; set; }
     public string? SubRtspUrl { get; set; }
     public string? Username { get; set; }
@@ -70,7 +71,9 @@ public sealed class DetectionInterval
 public sealed class AppSettings
 {
     public Guid Id { get; set; } = Guid.CreateVersion7();
-    public int GeneralRetentionDays { get; set; } = 30;
+    public const int DefaultGeneralRetentionDays = 30;
+
+    public int GeneralRetentionDays { get; set; } = DefaultGeneralRetentionDays;
     public int DetectionRetentionDays { get; set; } = 90;
     public long? MaxStorageBytes { get; set; }
     public bool InferenceEnabled { get; set; } = true;
