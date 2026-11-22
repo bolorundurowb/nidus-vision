@@ -5,9 +5,15 @@ RUN npm ci
 COPY src/NidusVision.Client/ ./
 RUN npm run build
 
-FROM python:3.12-slim-bookworm AS ov-ort
+FROM alpine:3.24 AS ov-ort
 WORKDIR /ov
-RUN pip install --no-cache-dir --target /ov/pkg onnxruntime-openvino==1.24.1 \
+ARG TARGETARCH
+RUN test "$TARGETARCH" = amd64 || { echo 'OpenVINO requires Linux amd64.' >&2; exit 1; }
+# Extract native libraries from the pinned wheel without installing Python packages.
+ADD --checksum=sha256:d617fac2f59a6ab5ea59a788c3e1592240a129642519aaeaa774761dfe35150e \
+    https://files.pythonhosted.org/packages/50/cf/17ba72de2df0fcba349937d2788f154397bbc2d1a2d67772a97e26f6bc5f/onnxruntime_openvino-1.24.1-cp312-cp312-manylinux_2_28_x86_64.whl \
+    /ov/runtime.whl
+RUN unzip -q /ov/runtime.whl -d /ov/pkg \
     && mkdir -p /ov/native \
     && find /ov/pkg \( -path '*/onnxruntime/*' -o -path '*/openvino/*' \) -type f \
          \( -name '*.so' -o -name '*.so.*' -o -name '*.xml' -o -name '*.json' -o -name '*.mvcmd' \) \
@@ -29,7 +35,11 @@ FROM mcr.microsoft.com/dotnet/aspnet:11.0
 WORKDIR /app
 # libze1 and libze-intel-gpu1 are the Level Zero runtime OpenVINO needs to see an
 # Intel iGPU. VA-API (what Jellyfin uses) is a different driver and is not enough.
-RUN apt-get update \
+# Apply distro fixes published since the runtime image was built. Our entrypoint
+# starts dotnet directly, so the inherited Pebble service supervisor is unused.
+RUN rm -f /usr/bin/pebble \
+    && apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends \
         curl ffmpeg \
         libtbb12 libgomp1 \
