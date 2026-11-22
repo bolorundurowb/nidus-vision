@@ -10,7 +10,9 @@ public sealed record CameraWriteRequest(
     string? Password,
     string Transport,
     bool ClearCredentials = false,
-    bool? RecordingEnabled = null);
+    bool? RecordingEnabled = null,
+    int? RetentionDaysOverride = null,
+    bool UseGeneralRetention = false);
 
 public sealed record CameraResponse(
     Guid Id,
@@ -27,6 +29,8 @@ public sealed record CameraResponse(
     int? Fps,
     string? Bitrate,
     string? Retention,
-    bool RecordingEnabled);
+    bool RecordingEnabled,
+    int RetentionDays,
+    int? RetentionDaysOverride);
 
 public sealed record ProbeResult(bool Ok, string Message, string? Resolution, int? Fps);

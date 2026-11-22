@@ -8,7 +8,8 @@ export interface CameraItem {
   resolution: string | null;
   fps: number | null;
   bitrate: string | null;
-  retention: string | null;
+  retentionDays: number;
+  retentionDaysOverride: number | null;
   location: string;
   enabled: boolean;
   recordingEnabled: boolean;

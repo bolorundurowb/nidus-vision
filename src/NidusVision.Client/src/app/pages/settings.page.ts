@@ -209,7 +209,7 @@ export class SettingsPage {
   private readonly inferenceEnabled = signal(true);
   private readonly sampleFps = signal(1);
   private readonly confidenceThreshold = signal(0.6);
-  protected readonly version = signal('1.0.0');
+  protected readonly version = signal('unknown');
   protected readonly usedLabel = signal('Storage metrics unavailable');
   protected readonly usedPct = signal(0);
   protected readonly unlimited = signal(true);
@@ -254,6 +254,7 @@ export class SettingsPage {
     this.loadError.set(null);
     try {
       const settings = await this.api.get();
+      this.version.set(settings.version ?? 'unknown');
       this.general.set(settings.generalRetentionDays);
       this.detection.set(settings.detectionRetentionDays);
       this.setStorageLimitValue(settings.maxStorageBytes);
@@ -281,7 +282,6 @@ export class SettingsPage {
 
   private async loadMetrics(): Promise<void> {
     const metrics = await this.api.metrics();
-    this.version.set(metrics.version);
     this.cpu.set(`${metrics.cpuPercent.toFixed(0)}%`);
     this.memory.set(`${this.gbValue(metrics.memoryUsedBytes)} / ${this.gbValue(metrics.memoryTotalBytes)} GB`);
     this.setUptime(metrics.uptime);

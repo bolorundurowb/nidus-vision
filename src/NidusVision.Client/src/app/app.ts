@@ -53,7 +53,15 @@ export class App {
     if (!form) {
       return;
     }
-    const ok = await this.store.addCamera(cameraWrite(form));
+    const message = this.addForm()?.retentionError();
+    if (message) {
+      this.probeResult.set({ ok: false, message });
+      return;
+    }
+    const ok = await this.store.addCamera(cameraWrite({
+      ...form,
+      retentionDaysOverride: form.retentionDaysOverride ?? undefined,
+    }));
     if (!ok) {
       this.probeResult.set({ ok: false, message: 'Could not save the camera. Check the server connection and try again.' });
       return;
@@ -71,7 +79,7 @@ export class App {
     this.probing.set(true);
     this.probeResult.set(null);
     try {
-      this.probeResult.set(await this.cameraApi.probe(cameraWrite({ ...form, name: form.name || 'Probe' })));
+      this.probeResult.set(await this.cameraApi.probe(cameraWrite({ ...form, name: form.name || 'Probe', retentionDaysOverride: undefined })));
     } catch {
       this.probeResult.set({ ok: false, message: 'Could not reach the server to test this camera.' });
     } finally {

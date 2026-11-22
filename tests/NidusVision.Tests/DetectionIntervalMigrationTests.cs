@@ -49,8 +49,10 @@ public sealed class DetectionIntervalMigrationTests
         interval.Id.Must().Be(detectionId);
         interval.StartUtc.UtcTicks.Must().Be(start);
         interval.EndUtc.UtcTicks.Must().Be(end);
-        var locations = await db.Cameras.AsNoTracking().ToDictionaryAsync(camera => camera.Id, camera => camera.Location);
-        locations[cameraId].Must().Be(NidusVision.Core.Models.CameraLocation.Interior);
-        locations[exteriorCameraId].Must().Be(NidusVision.Core.Models.CameraLocation.Exterior);
+        var cameras = await db.Cameras.AsNoTracking().ToDictionaryAsync(camera => camera.Id);
+        cameras[cameraId].RetentionDaysOverride.VerifyNullable().BeNull();
+        cameras[exteriorCameraId].RetentionDaysOverride.VerifyNullable().BeNull();
+        cameras[cameraId].Location.Must().Be(NidusVision.Core.Models.CameraLocation.Interior);
+        cameras[exteriorCameraId].Location.Must().Be(NidusVision.Core.Models.CameraLocation.Exterior);
     }
 }

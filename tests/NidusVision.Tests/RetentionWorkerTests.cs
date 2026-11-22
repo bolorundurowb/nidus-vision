@@ -11,7 +11,7 @@ namespace NidusVision.Tests;
 public sealed class RetentionWorkerTests
 {
     [Fact]
-    public async Task RetentionDeletesRecordingThumbnailFiles()
+    public async Task CameraRetentionOverrideDeletesExpiredRecordingAndThumbnail()
     {
         // Arrange
         using var directory = new TestDirectory();
@@ -28,9 +28,9 @@ public sealed class RetentionWorkerTests
         await db.Database.EnsureCreatedAsync();
 
         var now = DateTimeOffset.Parse("2026-09-23T00:00:00Z");
-        var camera = new Camera { Name = "Front", MainRtspUrl = "rtsp://cam/stream" };
+        var camera = new Camera { Name = "Front", MainRtspUrl = "rtsp://cam/stream", RetentionDaysOverride = 1 };
         db.Cameras.Add(camera);
-        db.AppSettings.Add(new AppSettings { GeneralRetentionDays = 1, DetectionRetentionDays = 30 });
+        db.AppSettings.Add(new AppSettings { GeneralRetentionDays = 30, DetectionRetentionDays = 30 });
         db.RecordingSegments.Add(new RecordingSegment
         {
             CameraId = camera.Id,
