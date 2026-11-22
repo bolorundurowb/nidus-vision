@@ -121,7 +121,7 @@ Docker copies OpenVINO native libs from a Python ONNX Runtime OpenVINO wheel int
 
 ## Local development
 
-Requires .NET 10 SDK, Node.js 26, and FFmpeg on `PATH` or `FFMPEG_PATH`.
+Requires .NET 11 SDK, Node.js 26, and FFmpeg on `PATH` or `FFMPEG_PATH`.
 
 ```bash
 dotnet tool restore

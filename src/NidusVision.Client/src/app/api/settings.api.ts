@@ -14,6 +14,7 @@ export interface SettingsDto {
 
 export interface SettingsReadDto extends SettingsDto {
   recordingsDirectory: string;
+  version: string;
 }
 
 export interface MetricsDto {

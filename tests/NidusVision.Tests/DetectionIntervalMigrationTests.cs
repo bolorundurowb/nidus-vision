@@ -23,19 +23,19 @@ public sealed class DetectionIntervalMigrationTests
         var detectionId = Guid.CreateVersion7();
         var start = DateTimeOffset.Parse("2026-09-25T12:01:38Z").UtcTicks;
         var end = DateTimeOffset.Parse("2026-09-25T12:01:59Z").UtcTicks;
-        await db.Database.ExecuteSqlInterpolatedAsync($"""
+        await db.Database.ExecuteSqlAsync($"""
             INSERT INTO Cameras
                 (Id, Name, Location, Enabled, MainRtspUrl, Transport, Status, CreatedAt, UpdatedAt)
             VALUES
                 ({cameraId}, 'Front', 'Front yard', 1, 'rtsp://camera/stream', 0, 0, {start}, {start});
             """);
-        await db.Database.ExecuteSqlInterpolatedAsync($"""
+        await db.Database.ExecuteSqlAsync($"""
             INSERT INTO Cameras
                 (Id, Name, Location, Enabled, MainRtspUrl, Transport, Status, CreatedAt, UpdatedAt)
             VALUES
                 ({exteriorCameraId}, 'Back', 'Exterior', 1, 'rtsp://camera/back', 0, 0, {start}, {start});
             """);
-        await db.Database.ExecuteSqlInterpolatedAsync($"""
+        await db.Database.ExecuteSqlAsync($"""
             INSERT INTO DetectionEvents
                 (Id, CameraId, StartUtc, EndUtc, Confidence, BoundingBoxJson, ThumbnailPath, ClipPath, SegmentIdsJson)
             VALUES
@@ -49,8 +49,10 @@ public sealed class DetectionIntervalMigrationTests
         interval.Id.Must().Be(detectionId);
         interval.StartUtc.UtcTicks.Must().Be(start);
         interval.EndUtc.UtcTicks.Must().Be(end);
-        var locations = await db.Cameras.AsNoTracking().ToDictionaryAsync(camera => camera.Id, camera => camera.Location);
-        locations[cameraId].Must().Be(NidusVision.Core.Models.CameraLocation.Interior);
-        locations[exteriorCameraId].Must().Be(NidusVision.Core.Models.CameraLocation.Exterior);
+        var cameras = await db.Cameras.AsNoTracking().ToDictionaryAsync(camera => camera.Id);
+        cameras[cameraId].RetentionDaysOverride.VerifyNullable().BeNull();
+        cameras[exteriorCameraId].RetentionDaysOverride.VerifyNullable().BeNull();
+        cameras[cameraId].Location.Must().Be(NidusVision.Core.Models.CameraLocation.Interior);
+        cameras[exteriorCameraId].Location.Must().Be(NidusVision.Core.Models.CameraLocation.Exterior);
     }
 }

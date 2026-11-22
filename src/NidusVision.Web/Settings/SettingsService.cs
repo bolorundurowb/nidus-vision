@@ -11,6 +11,9 @@ namespace NidusVision.Web.Settings;
 
 public sealed class SettingsService(AppDbContext db, IOptions<StorageOptions> storage, ProcessCpuSampler cpu, StorageMetricsCache metricsCache)
 {
+    private static readonly string AppVersion = typeof(SettingsService).Assembly
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
+
     public async Task<SettingsResponse> GetAsync(CancellationToken cancellationToken)
     {
         var row = await db.AppSettings.AsNoTracking().OrderBy(s => s.Id).FirstAsync(cancellationToken);
@@ -72,12 +75,8 @@ public sealed class SettingsService(AppDbContext db, IOptions<StorageOptions> st
 
     public SystemMetricsResponse GetSystemMetrics()
     {
-        var process = Process.GetCurrentProcess();
+        using var process = Process.GetCurrentProcess();
         var storageMetrics = GetStorageMetrics();
-        var informational = Assembly.GetExecutingAssembly()
-            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
-            ?.InformationalVersion;
-        var version = string.IsNullOrWhiteSpace(informational) ? "1.0.0" : informational.Split('+')[0];
         return new SystemMetricsResponse(
             cpu.Sample(process),
             process.WorkingSet64,
@@ -85,7 +84,7 @@ public sealed class SettingsService(AppDbContext db, IOptions<StorageOptions> st
             DateTimeOffset.UtcNow - process.StartTime.ToUniversalTime(),
             null,
             storageMetrics,
-            version);
+            AppVersion);
     }
 
     private SettingsResponse ToResponse(AppSettings row) => new(
@@ -96,5 +95,6 @@ public sealed class SettingsService(AppDbContext db, IOptions<StorageOptions> st
         row.SampleFps,
         row.ConfidenceThreshold,
         SegmentDurationLimits.ClampSegmentDuration(row.SegmentDurationSeconds),
-        Path.GetFullPath(storage.Value.RecordingsDirectory));
+        Path.GetFullPath(storage.Value.RecordingsDirectory),
+        AppVersion);
 }
