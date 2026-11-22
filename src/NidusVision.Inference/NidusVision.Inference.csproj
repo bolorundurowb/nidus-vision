@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <OnnxRuntimeProvider Condition="'$(OnnxRuntimeProvider)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">DirectML</OnnxRuntimeProvider>
@@ -10,10 +10,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\NidusVision.Core\NidusVision.Core.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
   </ItemGroup>
 
   <Choose>
@@ -41,12 +37,12 @@
         <DefineConstants>$(DefineConstants);ONNX_EP_CUDA</DefineConstants>
       </PropertyGroup>
       <ItemGroup>
-        <PackageReference Include="Microsoft.ML.OnnxRuntime.Gpu" Version="1.30.0" />
+        <PackageReference Include="Microsoft.ML.OnnxRuntime.Gpu" Version="1.32.0" />
       </ItemGroup>
     </When>
     <When Condition="'$(OnnxRuntimeProvider)' == 'Cpu'">
       <ItemGroup>
-        <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.30.0" />
+        <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.32.0" />
       </ItemGroup>
     </When>
     <Otherwise>

@@ -23,19 +23,19 @@ public sealed class DetectionIntervalMigrationTests
         var detectionId = Guid.CreateVersion7();
         var start = DateTimeOffset.Parse("2026-09-25T12:01:38Z").UtcTicks;
         var end = DateTimeOffset.Parse("2026-09-25T12:01:59Z").UtcTicks;
-        await db.Database.ExecuteSqlInterpolatedAsync($"""
+        await db.Database.ExecuteSqlAsync($"""
             INSERT INTO Cameras
                 (Id, Name, Location, Enabled, MainRtspUrl, Transport, Status, CreatedAt, UpdatedAt)
             VALUES
                 ({cameraId}, 'Front', 'Front yard', 1, 'rtsp://camera/stream', 0, 0, {start}, {start});
             """);
-        await db.Database.ExecuteSqlInterpolatedAsync($"""
+        await db.Database.ExecuteSqlAsync($"""
             INSERT INTO Cameras
                 (Id, Name, Location, Enabled, MainRtspUrl, Transport, Status, CreatedAt, UpdatedAt)
             VALUES
                 ({exteriorCameraId}, 'Back', 'Exterior', 1, 'rtsp://camera/back', 0, 0, {start}, {start});
             """);
-        await db.Database.ExecuteSqlInterpolatedAsync($"""
+        await db.Database.ExecuteSqlAsync($"""
             INSERT INTO DetectionEvents
                 (Id, CameraId, StartUtc, EndUtc, Confidence, BoundingBoxJson, ThumbnailPath, ClipPath, SegmentIdsJson)
             VALUES
